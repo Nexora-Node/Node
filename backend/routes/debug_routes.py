@@ -15,7 +15,20 @@ def debug_columns(db: Session = Depends(get_db)):
     result = db.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name='users'")).fetchall()
     return [r[0] for r in result]
 
-@router.post("/seed")
+@router.post("/move-device")
+def move_device(db: Session = Depends(get_db)):
+    """Move device f58ed4e8 to Danixyz"""
+    from models import User, Device
+    from sqlalchemy import text
+    danixyz = db.query(User).filter(User.username == 'Danixyz').first()
+    device = db.query(Device).filter(Device.device_id == 'f58ed4e839ff3dccbce111a01ec66eaf').first()
+    if not danixyz:
+        return {"error": "Danixyz not found"}
+    if not device:
+        return {"error": "Device not found"}
+    device.user_id = danixyz.id
+    db.commit()
+    return {"status": "moved", "device_user_id": device.user_id, "danixyz_id": danixyz.id}
 def debug_seed(db: Session = Depends(get_db)):
     import secrets, string
     from models import User
