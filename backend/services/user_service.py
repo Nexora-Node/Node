@@ -19,6 +19,7 @@ def _unique_referral_code(db: Session, length: int = 8) -> str:
 
 
 def register_user(db: Session, user_data: UserRegister) -> User:
+    # v2 — referral single-use
     if db.query(User).filter(User.username == user_data.username).first():
         raise ValueError("Username already exists.")
 
