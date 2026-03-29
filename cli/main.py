@@ -312,6 +312,7 @@ class NexoraCLI:
             f.write(str(pid))
 
         print(f"✓ Node started (PID: {pid})")
+        print(f"  Referral Code : {self.config.get('referral_code', 'N/A')} (share to invite others)")
         print(f"  Use 'python main.py status' to check status")
         print(f"  Use 'python main.py stop' to stop the node")
 
@@ -462,7 +463,7 @@ class NexoraCLI:
         
         print(f"Username: {self.config['username']}")
         print(f"Device ID: {self.config['device_id']}")
-        print(f"Referral Code: {self.config['referral_code']}")
+        print(f"Referral Code: {self.config['referral_code']} (share to invite others)")
         
         # Check if node is running
         if PID_FILE.exists():
