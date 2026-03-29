@@ -14,3 +14,17 @@ def debug_users(db: Session = Depends(get_db)):
 def debug_columns(db: Session = Depends(get_db)):
     result = db.execute(text("SELECT column_name FROM information_schema.columns WHERE table_name='users'")).fetchall()
     return [r[0] for r in result]
+
+@router.post("/seed")
+def debug_seed(db: Session = Depends(get_db)):
+    import secrets, string
+    from models import User
+    existing = db.query(User).filter(User.username == "admin").first()
+    if existing:
+        return {"status": "already exists", "referral_code": existing.referral_code}
+    chars = string.ascii_uppercase + string.digits
+    code = "".join(secrets.choice(chars) for _ in range(8))
+    admin = User(username="admin", referral_code=code, invited_by=None, referral_used=False, points=0.0, total_earned=0.0)
+    db.add(admin)
+    db.commit()
+    return {"status": "seeded", "referral_code": code}
