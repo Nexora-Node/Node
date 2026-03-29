@@ -1,13 +1,13 @@
 # Nexora Requirements
 
 # Backend (FastAPI)
-fastapi==0.104.1
-uvicorn[standard]==0.24.0
-sqlalchemy==2.0.23
-pydantic==2.5.2
+fastapi==0.115.12
+uvicorn[standard]==0.34.0
+sqlalchemy==2.0.40
+pydantic==2.11.3
 
 # PostgreSQL driver (used on Railway)
-psycopg2-binary==2.9.9
+psycopg2-binary==2.9.10
 
 # CLI
-requests==2.31.0
+requests==2.32.3
