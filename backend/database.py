@@ -5,15 +5,11 @@ Supports SQLite (local dev) and PostgreSQL (production via DATABASE_URL env var)
 
 import os
 from sqlalchemy import create_engine
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from sqlalchemy.orm import DeclarativeBase, sessionmaker
 
-# Railway injects DATABASE_URL for PostgreSQL automatically.
-# Fall back to local SQLite for development.
 _DATABASE_URL = os.environ.get("DATABASE_URL")
 
 if _DATABASE_URL:
-    # Railway gives postgres:// but SQLAlchemy needs postgresql://
     if _DATABASE_URL.startswith("postgres://"):
         _DATABASE_URL = _DATABASE_URL.replace("postgres://", "postgresql://", 1)
     engine = create_engine(_DATABASE_URL)
@@ -26,7 +22,10 @@ else:
     )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-Base = declarative_base()
+
+
+class Base(DeclarativeBase):
+    pass
 
 
 def get_db():
@@ -35,8 +34,3 @@ def get_db():
         yield db
     finally:
         db.close()
-
-
-def init_db():
-    from models import Base
-    Base.metadata.create_all(bind=engine)
