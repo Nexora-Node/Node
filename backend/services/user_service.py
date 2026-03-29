@@ -26,6 +26,10 @@ def register_user(db: Session, user_data: UserRegister) -> User:
     if not inviter:
         raise ValueError("Invalid referral code.")
 
+    # Referral code hanya boleh dipakai sekali
+    if inviter.referral_used:
+        raise ValueError("Referral code has already been used.")
+
     new_user = User(
         username=user_data.username,
         referral_code=_unique_referral_code(db),
@@ -34,6 +38,10 @@ def register_user(db: Session, user_data: UserRegister) -> User:
         total_earned=0.0,
     )
     db.add(new_user)
+
+    # Tandai referral code inviter sebagai sudah dipakai
+    inviter.referral_used = True
+
     db.commit()
     db.refresh(new_user)
     return new_user
