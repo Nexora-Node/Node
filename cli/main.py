@@ -23,7 +23,7 @@ from datetime import datetime
 CONFIG_DIR = Path.home() / ".nexora"
 CONFIG_FILE = CONFIG_DIR / "config.json"
 PID_FILE = CONFIG_DIR / "node.pid"
-DEFAULT_API_URL = os.environ.get("NEXORA_API_URL", "https://nexora-production.up.railway.app")
+DEFAULT_API_URL = os.environ.get("NEXORA_API_URL", "https://node-production-712b.up.railway.app")
 
 
 class NexoraCLI:
