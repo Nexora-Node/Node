@@ -38,11 +38,11 @@ def generate_device_fingerprint(
 # ── NODE TOKEN VALIDATION ─────────────────────────────────────────────────────
 
 def validate_node_token(db: Session, node_id: str, node_token: str) -> bool:
-    """Return True only if node_id + node_token match an active node."""
+    """Return True only if node_id + node_token match an active or stopped node."""
     node = db.query(Node).filter(
         Node.node_id == node_id,
         Node.node_token == node_token,
-        Node.status == "active",
+        Node.status.in_(["active", "stopped"]),
     ).first()
     return node is not None
 

@@ -3,6 +3,7 @@ Nexora Backend - Node Routes
 """
 
 from fastapi import APIRouter, Depends, HTTPException, Request, status
+from pydantic import BaseModel
 from sqlalchemy.orm import Session
 from database import get_db
 from schemas import (
@@ -11,7 +12,7 @@ from schemas import (
 )
 from services.node_service import (
     register_node, process_heartbeat,
-    get_node_status, get_user_nodes,
+    get_node_status, get_user_nodes, stop_node,
 )
 
 router = APIRouter(prefix="/node", tags=["node"])
@@ -60,6 +61,28 @@ def node_heartbeat(
             ip,
         )
         return StatusResponse(success=True, message=result["message"])
+    except PermissionError as e:
+        raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
+    except ValueError as e:
+        raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
+
+
+class NodeStop(BaseModel):
+    node_id: str
+    node_token: str
+    device_id: str
+
+
+@router.post("/stop", response_model=StatusResponse)
+def stop_node_endpoint(
+    body: NodeStop,
+    request: Request,
+    db: Session = Depends(get_db),
+):
+    ip = _client_ip(request)
+    try:
+        stop_node(db, body.node_id, body.node_token, body.device_id, ip)
+        return StatusResponse(success=True, message="Node stopped.")
     except PermissionError as e:
         raise HTTPException(status_code=status.HTTP_401_UNAUTHORIZED, detail=str(e))
     except ValueError as e:

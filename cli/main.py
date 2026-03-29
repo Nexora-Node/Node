@@ -219,109 +219,112 @@ class NexoraCLI:
             print(f"✗ Error: {str(e)}")
     
     def start_node(self):
-        """Start node in background"""
+        """Start node - resume existing node or register new one"""
         print(f"\n{'='*50}")
         print("NEXORA NODE START")
         print(f"{'='*50}\n")
-        
-        # Check if already running
+
         if PID_FILE.exists():
             print("✗ Node is already running!")
             print(f"  Use 'python main.py stop' to stop it first.")
             return
-        
-        # Check config
+
         if not self.config.get("device_id"):
             print("✗ Error: Not registered!")
             print("  Use 'python main.py register --ref CODE' to register first.")
             return
-        
+
         device_id = self.config["device_id"]
-        node_id = self.generate_node_id()
-        
-        print(f"Device ID: {device_id}")
-        print(f"Node ID: {node_id}")
-        
-        # Generate proof-of-work
-        print("\nGenerating proof-of-work...")
-        nonce = self.generate_proof_of_work(device_id)
-        print(f"Nonce: {nonce}")
-        
-        # Register node with server
-        print("\nStarting node...")
-        try:
-            response = requests.post(
-                f"{self.api_url}/node/register",
-                json={
-                    "device_id": device_id,
-                    "system": f"{platform.system()}-{platform.release()}",
-                    "hostname": socket.gethostname(),
-                    "nonce": nonce
-                },
-                timeout=10
-            )
-            
-            if response.status_code == 200:
-                result = response.json()
-                node_id = result["node_id"]
-                node_token = result["node_token"]
-                
-                print("✓ Node registered with server!")
-                print(f"Node Token: {node_token[:16]}...")
-                
-                # Save node token
-                self.config["node_token"] = node_token
-                self.save_config(self.config)
-                
-                # Start background thread
-                stop_event = threading.Event()
-                thread = threading.Thread(
-                    target=self._node_loop,
-                    args=(node_id, node_token, device_id, stop_event),
-                    daemon=False
+
+        # Try to resume existing node first
+        node_info_file = CONFIG_DIR / "node_info.json"
+        node_id = None
+        node_token = None
+
+        if node_info_file.exists():
+            try:
+                with open(node_info_file, 'r') as f:
+                    saved = json.load(f)
+                node_id = saved.get("node_id")
+                node_token = saved.get("node_token")
+                print(f"Device ID: {device_id}")
+                print(f"Resuming node: {node_id}")
+            except Exception:
+                node_id = None
+
+        # If no saved node, register a new one
+        if not node_id or not node_token:
+            print(f"Device ID: {device_id}")
+            print("\nGenerating proof-of-work...")
+            nonce = self.generate_proof_of_work(device_id)
+            print(f"Nonce: {nonce}")
+            print("\nRegistering new node...")
+            try:
+                response = requests.post(
+                    f"{self.api_url}/node/register",
+                    json={
+                        "device_id": device_id,
+                        "system": f"{platform.system()}-{platform.release()}",
+                        "hostname": socket.gethostname(),
+                        "nonce": nonce,
+                    },
+                    timeout=10,
                 )
-                thread.start()
-                
-                # Save PID
-                pid = os.getpid()
-                with open(PID_FILE, 'w') as f:
-                    f.write(str(pid))
-                
-                # Save node info
-                node_info = {
-                    "node_id": node_id,
-                    "node_token": node_token,
-                    "device_id": device_id,
-                    "started_at": datetime.utcnow().isoformat()
-                }
-                node_info_file = CONFIG_DIR / "node_info.json"
-                with open(node_info_file, 'w') as f:
-                    json.dump(node_info, f, indent=2)
-                
-                print(f"✓ Node started in background (PID: {pid})")
-                print(f"  Heartbeat interval: 30 seconds")
-                print(f"  Use 'python main.py status' to check status")
-                print(f"  Use 'python main.py stop' to stop the node")
-                
-                # Keep main thread alive
-                try:
-                    while not stop_event.is_set():
-                        time.sleep(1)
-                except KeyboardInterrupt:
-                    print("\n\nStopping node...")
-                    stop_event.set()
-                    thread.join(timeout=5)
-                    if PID_FILE.exists():
-                        PID_FILE.unlink()
-                    print("✓ Node stopped")
-            
-            else:
-                print(f"✗ Failed to start node: {response.json().get('detail', 'Unknown error')}")
-        
-        except requests.exceptions.ConnectionError:
-            print("✗ Error: Cannot connect to server. Make sure the backend is running.")
-        except Exception as e:
-            print(f"✗ Error: {str(e)}")
+                if response.status_code == 200:
+                    result = response.json()
+                    node_id = result["node_id"]
+                    node_token = result["node_token"]
+                    print(f"✓ Node registered!")
+                else:
+                    print(f"✗ Failed to start node: {response.json().get('detail', 'Unknown error')}")
+                    return
+            except requests.exceptions.ConnectionError:
+                print("✗ Cannot connect to server.")
+                return
+            except Exception as e:
+                print(f"✗ Error: {str(e)}")
+                return
+
+        # Save node info
+        node_info = {
+            "node_id": node_id,
+            "node_token": node_token,
+            "device_id": device_id,
+            "started_at": datetime.utcnow().isoformat(),
+        }
+        with open(node_info_file, 'w') as f:
+            json.dump(node_info, f, indent=2)
+
+        self.config["node_token"] = node_token
+        self.save_config(self.config)
+
+        # Start heartbeat loop
+        stop_event = threading.Event()
+        thread = threading.Thread(
+            target=self._node_loop,
+            args=(node_id, node_token, device_id, stop_event),
+            daemon=False,
+        )
+        thread.start()
+
+        pid = os.getpid()
+        with open(PID_FILE, 'w') as f:
+            f.write(str(pid))
+
+        print(f"✓ Node started (PID: {pid})")
+        print(f"  Use 'python main.py status' to check status")
+        print(f"  Use 'python main.py stop' to stop the node")
+
+        try:
+            while not stop_event.is_set():
+                time.sleep(1)
+        except KeyboardInterrupt:
+            print("\n\nStopping node...")
+            stop_event.set()
+            thread.join(timeout=5)
+            if PID_FILE.exists():
+                PID_FILE.unlink()
+            print("✓ Node stopped")
     
     def _node_loop(self, node_id: str, node_token: str, device_id: str, stop_event: threading.Event):
         """Background node loop - sends heartbeats with jitter to avoid perfect-timing detection."""
@@ -364,14 +367,32 @@ class NexoraCLI:
                 time.sleep(1)
     
     def stop_node(self):
-        """Stop running node"""
+        """Stop running node and notify server"""
         print(f"\n{'='*50}")
         print("NEXORA NODE STOP")
         print(f"{'='*50}\n")
-        
+
         if not PID_FILE.exists():
             print("✗ No node is running!")
             return
+
+        # Notify server to set node status = stopped
+        node_info_file = CONFIG_DIR / "node_info.json"
+        if node_info_file.exists():
+            try:
+                with open(node_info_file, 'r') as f:
+                    node_info = json.load(f)
+                requests.post(
+                    f"{self.api_url}/node/stop",
+                    json={
+                        "node_id": node_info["node_id"],
+                        "node_token": node_info["node_token"],
+                        "device_id": node_info["device_id"],
+                    },
+                    timeout=5,
+                )
+            except Exception:
+                pass  # Best effort — still stop locally
         
         try:
             # Read PID

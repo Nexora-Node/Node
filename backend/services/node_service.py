@@ -150,11 +150,11 @@ def process_heartbeat(
         )
         raise PermissionError("Invalid node_id or node_token.")
 
-    # 2. Fetch node
+    # 2. Fetch node (active or stopped — stopped nodes can be resumed)
     node = db.query(Node).filter(
         Node.node_id == node_id,
         Node.device_id == device_id,
-        Node.status == "active",
+        Node.status.in_(["active", "stopped"]),
     ).first()
     if not node:
         log_security_event(
@@ -163,7 +163,13 @@ def process_heartbeat(
             ip_address=ip_address,
             details={"device_id": device_id},
         )
-        raise ValueError("Node not found or not active.")
+        raise ValueError("Node not found or suspended.")
+
+    # Reactivate if stopped
+    if node.status == "stopped":
+        node.status = "active"
+        increment_ip_tracker(db, ip_address)
+        db.commit()
 
     # 3. Rate limit
     if not check_rate_limit(db, node_id, min_interval=20):
@@ -249,6 +255,25 @@ def process_heartbeat(
 
 
 # ── QUERIES ───────────────────────────────────────────────────────────────────
+
+def stop_node(db: Session, node_id: str, node_token: str, device_id: str, ip_address: str) -> None:
+    """Set node status to stopped and update IP tracker."""
+    if not validate_node_token(db, node_id, node_token):
+        raise PermissionError("Invalid node_id or node_token.")
+
+    node = db.query(Node).filter(
+        Node.node_id == node_id,
+        Node.device_id == device_id,
+    ).first()
+    if not node:
+        raise ValueError("Node not found.")
+
+    if node.status == "active":
+        node.status = "stopped"
+        node.last_seen = datetime.utcnow()
+        decrement_ip_tracker(db, node.ip_address or ip_address)
+        db.commit()
+
 
 def get_node_status(db: Session, device_id: str) -> List[Node]:
     return db.query(Node).filter(Node.device_id == device_id).all()
