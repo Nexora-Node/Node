@@ -26,7 +26,7 @@ class UserResponse(BaseModel):
     id: int
     username: str
     referral_code: str
-    invited_by: Optional[str]
+    invited_by: Optional[str] = None
     points: float
     total_earned: float
     created_at: datetime
@@ -38,7 +38,6 @@ class UserResponse(BaseModel):
 
 class DeviceRegister(BaseModel):
     device_id: str = Field(..., min_length=32, max_length=64)
-    # SHA256 hex digest — exactly 64 chars
     device_fingerprint: str = Field(..., min_length=64, max_length=64)
     user_id: int
     ip_address: Optional[str] = Field(None, max_length=45)
@@ -56,7 +55,7 @@ class DeviceResponse(BaseModel):
     device_id: str
     device_fingerprint: str
     user_id: int
-    ip_address: Optional[str]
+    ip_address: Optional[str] = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -85,7 +84,7 @@ class NodeStatus(BaseModel):
     last_seen: datetime
     status: str
     node_score: int
-    ip_address: Optional[str]
+    ip_address: Optional[str] = None
 
     model_config = {"from_attributes": True}
 
@@ -120,10 +119,10 @@ class ClaimResponse(BaseModel):
 class SecurityLogResponse(BaseModel):
     id: int
     event_type: str
-    node_id: Optional[str]
-    device_id: Optional[str]
-    ip_address: Optional[str]
-    details: Optional[str]
+    node_id: Optional[str] = None
+    device_id: Optional[str] = None
+    ip_address: Optional[str] = None
+    details: Optional[str] = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
