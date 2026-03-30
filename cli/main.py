@@ -320,8 +320,27 @@ class NexoraCLI:
                     saved = json.load(f)
                 node_id = saved.get("node_id")
                 node_token = saved.get("node_token")
-                print(f"Device ID: {device_id}")
-                print(f"Resuming node: {node_id}")
+
+                # Verify node still valid on server before resuming
+                try:
+                    test = requests.post(
+                        f"{self.api_url}/node/heartbeat",
+                        json={"node_id": node_id, "node_token": node_token,
+                              "device_id": device_id, "uptime": 0.0},
+                        timeout=5,
+                    )
+                    if test.status_code == 401 or (test.status_code == 400 and "not found" in test.text.lower()):
+                        print(f"Saved node no longer valid, registering new node...")
+                        node_id = None
+                        node_token = None
+                        node_info_file.unlink(missing_ok=True)
+                    else:
+                        print(f"Device ID: {device_id}")
+                        print(f"Resuming node: {node_id}")
+                except Exception:
+                    # Can't verify — try to resume anyway
+                    print(f"Device ID: {device_id}")
+                    print(f"Resuming node: {node_id}")
             except Exception:
                 node_id = None
 
