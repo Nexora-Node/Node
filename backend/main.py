@@ -17,8 +17,13 @@ from database import engine, Base
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    import models  # noqa: ensure all models are registered before create_all
-    Base.metadata.create_all(bind=engine)
+    # Import models so all tables are registered before create_all
+    import models  # noqa
+    try:
+        Base.metadata.create_all(bind=engine)
+    except Exception as e:
+        print(f"WARNING: Could not create tables: {e}")
+        print("App will start anyway — DB may not be ready yet.")
     yield
 
 
