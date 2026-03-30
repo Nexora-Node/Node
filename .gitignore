@@ -52,3 +52,8 @@ Thumbs.db
 # Distribution
 *.tar.gz
 *.zip
+
+# Node.js / Web
+web/node_modules/
+web/.next/
+web/.env.local
