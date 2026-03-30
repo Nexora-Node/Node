@@ -12,6 +12,7 @@ if _here not in sys.path:
     sys.path.insert(0, _here)
 
 from fastapi import FastAPI
+from fastapi.middleware.cors import CORSMiddleware
 from database import engine, Base
 
 
@@ -32,6 +33,17 @@ app = FastAPI(
     description="Backend API for Nexora distributed node network",
     version="2.0.0",
     lifespan=lifespan,
+)
+
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=[
+        "https://node-delta-ten.vercel.app",
+        "http://localhost:3000",
+    ],
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
 )
 
 from routes import user_routes, node_routes, points_routes, security_routes
