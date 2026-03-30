@@ -1,4 +1,5 @@
 "use client";
+import { Suspense } from "react";
 import { useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
@@ -6,7 +7,7 @@ import { useAccount } from "wagmi";
 import { getUser, getPoints, getUserNodes, getChainNodes, UserInfo, NodeInfo, ChainNodeInfo, PointsInfo } from "@/lib/api";
 import { NodeCard } from "@/components/NodeCard";
 
-export default function Dashboard() {
+function DashboardContent() {
   const params = useSearchParams();
   const router = useRouter();
   const { address } = useAccount();
@@ -148,5 +149,13 @@ export default function Dashboard() {
         </div>
       </div>
     </main>
+  );
+}
+
+export default function Dashboard() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-gray-400">Loading...</div>}>
+      <DashboardContent />
+    </Suspense>
   );
 }
