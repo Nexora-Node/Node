@@ -128,6 +128,42 @@ class SecurityLogResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+# ── CHAIN NODE ────────────────────────────────────────────────────────────────
+
+class ChainNodeRegister(BaseModel):
+    node_id: str = Field(..., min_length=1, max_length=64)
+    node_token: str = Field(..., min_length=64, max_length=64)
+    chain_id: int
+    rpc_url: str = Field(..., max_length=255)
+
+
+class ChainNodeHeartbeat(BaseModel):
+    chain_node_id: str = Field(..., min_length=1, max_length=64)
+    node_id: str = Field(..., min_length=1, max_length=64)
+    node_token: str = Field(..., min_length=64, max_length=64)
+    local_block: int = Field(..., ge=0)
+
+
+class ChainNodeStatus(BaseModel):
+    chain_node_id: str
+    chain_id: int
+    chain_name: str
+    last_block: int
+    sync_lag: int
+    status: str
+    last_verified: Optional[datetime] = None
+
+    model_config = {"from_attributes": True}
+
+
+class ChainNodeResponse(BaseModel):
+    success: bool
+    message: str
+    chain_node_id: str
+    chain_name: str
+    reward_multiplier: float
+
+
 # ── GENERAL ───────────────────────────────────────────────────────────────────
 
 class StatusResponse(BaseModel):

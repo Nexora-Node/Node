@@ -55,6 +55,23 @@ class Node(Base):
     device = relationship("Device", back_populates="nodes")
 
 
+class ChainNode(Base):
+    """Tracks a user's blockchain full node (Base, ETH, OP, BNB, etc.)"""
+    __tablename__ = "chain_nodes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    chain_node_id = Column(String(64), unique=True, index=True, nullable=False)
+    node_id = Column(String(64), ForeignKey("nodes.node_id"), nullable=False)
+    chain_id = Column(Integer, nullable=False, index=True)   # e.g. 8453 = Base mainnet
+    chain_name = Column(String(50), nullable=False)          # e.g. "base_mainnet"
+    rpc_url = Column(String(255), nullable=False)            # local RPC endpoint
+    last_block = Column(Integer, default=0)                  # last verified block
+    last_verified = Column(DateTime, nullable=True)
+    sync_lag = Column(Integer, default=0)                    # blocks behind public RPC
+    status = Column(String(20), default="active")            # active | stopped | unsynced
+    created_at = Column(DateTime, default=datetime.utcnow)
+
+
 class IPTracker(Base):
     __tablename__ = "ip_tracker"
 

@@ -25,6 +25,21 @@ CONFIG_FILE = CONFIG_DIR / "config.json"
 PID_FILE = CONFIG_DIR / "node.pid"
 DEFAULT_API_URL = os.environ.get("NEXORA_API_URL", "https://node-production-712b.up.railway.app")
 
+# ── SUPPORTED CHAINS (mirrors backend) ───────────────────────────────────────
+CHAIN_INFO = {
+    1:        {"name": "ETH Mainnet",   "multiplier": 5.0},
+    10:       {"name": "OP Mainnet",    "multiplier": 2.0},
+    56:       {"name": "BNB Chain",     "multiplier": 2.0},
+    8453:     {"name": "Base Mainnet",  "multiplier": 3.0},
+    84532:    {"name": "Base Sepolia",  "multiplier": 1.5},
+    11155111: {"name": "ETH Sepolia",   "multiplier": 1.5},
+    11155420: {"name": "OP Sepolia",    "multiplier": 1.5},
+    97:       {"name": "BNB Testnet",   "multiplier": 1.2},
+}
+
+# Common local RPC ports to probe
+LOCAL_RPC_PORTS = [8545, 8546, 9545, 9546, 7545]
+
 
 class NexoraCLI:
     """Main CLI class for Nexora node management"""
@@ -123,6 +138,46 @@ class NexoraCLI:
         
         return node_id
     
+    def detect_local_chain_nodes(self) -> list:
+        """
+        Probe common local RPC ports to find running blockchain nodes.
+        Returns list of {port, chain_id, chain_name, rpc_url, block_number}
+        """
+        found = []
+        for port in LOCAL_RPC_PORTS:
+            rpc_url = f"http://127.0.0.1:{port}"
+            try:
+                # Get chain ID
+                r = requests.post(rpc_url, json={
+                    "jsonrpc": "2.0", "method": "eth_chainId", "params": [], "id": 1
+                }, timeout=2)
+                chain_id_hex = r.json().get("result")
+                if not chain_id_hex:
+                    continue
+                chain_id = int(chain_id_hex, 16)
+
+                # Get block number
+                r2 = requests.post(rpc_url, json={
+                    "jsonrpc": "2.0", "method": "eth_blockNumber", "params": [], "id": 1
+                }, timeout=2)
+                block_hex = r2.json().get("result")
+                block = int(block_hex, 16) if block_hex else 0
+
+                chain_name = CHAIN_INFO.get(chain_id, {}).get("name", f"Unknown ({chain_id})")
+                multiplier = CHAIN_INFO.get(chain_id, {}).get("multiplier", 1.0)
+
+                found.append({
+                    "port": port,
+                    "chain_id": chain_id,
+                    "chain_name": chain_name,
+                    "rpc_url": rpc_url,
+                    "block_number": block,
+                    "multiplier": multiplier,
+                })
+            except Exception:
+                continue
+        return found
+
     def generate_proof_of_work(self, device_id: str, difficulty: int = 3) -> str:
         """
         Generate proof-of-work nonce
@@ -307,6 +362,29 @@ class NexoraCLI:
         )
         thread.start()
 
+        # Auto-detect and register local blockchain nodes
+        print("\nScanning for local blockchain nodes...")
+        chain_nodes = self.detect_local_chain_nodes()
+        if chain_nodes:
+            for cn in chain_nodes:
+                print(f"  Found: {cn['chain_name']} on port {cn['port']} "
+                      f"(block #{cn['block_number']:,}, {cn['multiplier']}x reward)")
+            # Start chain heartbeat thread
+            chain_thread = threading.Thread(
+                target=self._chain_loop,
+                args=(node_id, node_token, chain_nodes, stop_event),
+                daemon=False,
+            )
+            chain_thread.start()
+
+            # Save chain info
+            chain_info_file = CONFIG_DIR / "chain_info.json"
+            with open(chain_info_file, 'w') as f:
+                json.dump(chain_nodes, f, indent=2)
+        else:
+            print("  No local blockchain nodes detected.")
+            print("  Run a Base/ETH/OP node locally to earn bonus rewards!")
+
         pid = os.getpid()
         with open(PID_FILE, 'w') as f:
             f.write(str(pid))
@@ -367,6 +445,85 @@ class NexoraCLI:
                     break
                 time.sleep(1)
     
+    def _chain_loop(self, node_id: str, node_token: str, chain_nodes: list, stop_event: threading.Event):
+        """
+        Background loop for chain node heartbeats.
+        Registers each chain node then sends heartbeats every 60 seconds.
+        """
+        import random
+        registered = {}  # chain_id → chain_node_id
+
+        # Register all detected chain nodes
+        for cn in chain_nodes:
+            try:
+                r = requests.post(
+                    f"{self.api_url}/chain/register",
+                    json={
+                        "node_id": node_id,
+                        "node_token": node_token,
+                        "chain_id": cn["chain_id"],
+                        "rpc_url": cn["rpc_url"],
+                    },
+                    timeout=15,
+                )
+                if r.status_code == 200:
+                    data = r.json()
+                    registered[cn["chain_id"]] = data["chain_node_id"]
+                    print(f"[Chain] ✓ Registered {cn['chain_name']} "
+                          f"({data['reward_multiplier']}x multiplier)")
+                else:
+                    print(f"[Chain] ✗ {cn['chain_name']}: {r.json().get('detail', 'error')}")
+            except Exception as e:
+                print(f"[Chain] ✗ {cn['chain_name']}: {str(e)}")
+
+        if not registered:
+            return
+
+        # Heartbeat loop — every 60 seconds
+        while not stop_event.is_set():
+            for cn in chain_nodes:
+                chain_id = cn["chain_id"]
+                if chain_id not in registered:
+                    continue
+                try:
+                    # Get current block
+                    r = requests.post(cn["rpc_url"], json={
+                        "jsonrpc": "2.0", "method": "eth_blockNumber", "params": [], "id": 1
+                    }, timeout=3)
+                    block_hex = r.json().get("result")
+                    if not block_hex:
+                        continue
+                    local_block = int(block_hex, 16)
+
+                    # Send chain heartbeat
+                    hb = requests.post(
+                        f"{self.api_url}/chain/heartbeat",
+                        json={
+                            "chain_node_id": registered[chain_id],
+                            "node_id": node_id,
+                            "node_token": node_token,
+                            "local_block": local_block,
+                        },
+                        timeout=10,
+                    )
+                    if hb.status_code == 200:
+                        data = hb.json()
+                        print(f"[{datetime.now().strftime('%H:%M:%S')}] "
+                              f"[Chain:{cn['chain_name']}] "
+                              f"block={local_block:,} lag={data.get('sync_lag', '?')} "
+                              f"+{data.get('bonus_points', 0):.3f}pts")
+                    else:
+                        print(f"[Chain:{cn['chain_name']}] {hb.json().get('detail', 'error')}")
+                except Exception as e:
+                    print(f"[Chain:{cn['chain_name']}] Error: {str(e)}")
+
+            # Sleep 60s with jitter
+            interval = 60 + random.uniform(-5, 5)
+            for _ in range(int(interval)):
+                if stop_event.is_set():
+                    break
+                time.sleep(1)
+
     def stop_node(self):
         """Stop running node and notify server"""
         print(f"\n{'='*50}")
@@ -476,6 +633,16 @@ class NexoraCLI:
                     node_info = json.load(f)
                 print(f"Node ID: {node_info['node_id']}")
                 print(f"Started: {node_info['started_at']}")
+
+            # Show chain nodes
+            chain_info_file = CONFIG_DIR / "chain_info.json"
+            if chain_info_file.exists():
+                with open(chain_info_file, 'r') as f:
+                    chains = json.load(f)
+                if chains:
+                    print(f"\nBlockchain Nodes:")
+                    for cn in chains:
+                        print(f"  {cn['chain_name']} — port {cn['port']} — {cn['multiplier']}x reward")
         else:
             print(f"\nNode Status: STOPPED")
         
@@ -538,6 +705,9 @@ Examples:
     # Claim command
     subparsers.add_parser("claim", help="Claim available points")
 
+    # Chains command
+    subparsers.add_parser("chains", help="List supported blockchain networks")
+
     # Parse arguments
     args = parser.parse_args()
     
@@ -555,6 +725,16 @@ Examples:
         cli.status()
     elif args.command == "claim":
         cli.claim()
+    elif args.command == "chains":
+        try:
+            r = requests.get(f"{cli.api_url}/chain/supported", timeout=10)
+            print(f"\n{'='*50}")
+            print("SUPPORTED BLOCKCHAIN NETWORKS")
+            print(f"{'='*50}")
+            for c in r.json():
+                print(f"  {c['name']:<20} chain_id={c['chain_id']:<10} {c['multiplier']}x reward")
+        except Exception as e:
+            print(f"Error: {e}")
     else:
         parser.print_help()
 
