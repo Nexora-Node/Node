@@ -1,5 +1,5 @@
 "use client";
-import { NodeInfo, ChainNodeInfo, formatUptime, timeAgo } from "./lib/api";
+import { NodeInfo, ChainNodeInfo, formatUptime, timeAgo } from "../lib/api";
 
 const CHAIN_NAMES: Record<string, string> = {
   eth_mainnet: "ETH", op_mainnet: "OP", bnb_mainnet: "BNB",

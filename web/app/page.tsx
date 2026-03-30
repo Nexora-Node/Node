@@ -3,7 +3,7 @@ import { useState } from "react";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { useAccount } from "wagmi";
 import { useRouter } from "next/navigation";
-import { linkWallet } from "./lib/api";
+import { linkWallet } from "../lib/api";
 
 export default function Home() {
   const { address, isConnected } = useAccount();
