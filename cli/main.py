@@ -728,11 +728,15 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter,
         epilog="""
 Examples:
-  python main.py register --ref NEXORA001
+  python main.py register --ref YOUR_REF_CODE
   python main.py start
   python main.py status
   python main.py stop
   python main.py claim
+  python main.py wallet 0xYourWalletAddress
+  python main.py chains
+
+Dashboard: https://node-delta-ten.vercel.app
         """
     )
     
