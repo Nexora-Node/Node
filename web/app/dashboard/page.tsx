@@ -4,8 +4,8 @@ import { useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { useAccount } from "wagmi";
-import { getUser, getPoints, getUserNodes, getChainNodes, UserInfo, NodeInfo, ChainNodeInfo, PointsInfo } from "@/lib/api";
-import { NodeCard } from "@/components/NodeCard";
+import { getUser, getPoints, getUserNodes, getChainNodes, UserInfo, NodeInfo, ChainNodeInfo, PointsInfo } from "../../lib/api";
+import { NodeCard } from "../../components/NodeCard";
 
 function DashboardContent() {
   const params = useSearchParams();
