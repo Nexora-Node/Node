@@ -35,13 +35,12 @@ app = FastAPI(
 )
 
 from routes import user_routes, node_routes, points_routes, security_routes
-from routes import debug_routes, chain_routes
+from routes import chain_routes
 
 app.include_router(user_routes.router)
 app.include_router(node_routes.router)
 app.include_router(points_routes.router)
 app.include_router(security_routes.router)
-app.include_router(debug_routes.router)
 app.include_router(chain_routes.router)
 
 
