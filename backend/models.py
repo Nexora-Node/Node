@@ -15,7 +15,8 @@ class User(Base):
     username = Column(String(50), unique=True, index=True, nullable=False)
     referral_code = Column(String(20), unique=True, index=True, nullable=False)
     invited_by = Column(String(20), nullable=True)
-    referral_used = Column(Boolean, default=False)  # True once someone uses this code
+    referral_used = Column(Boolean, default=False)
+    wallet_address = Column(String(42), nullable=True, unique=True, index=True)  # EVM wallet 0x...
     points = Column(Float, default=0.0)
     total_earned = Column(Float, default=0.0)
     created_at = Column(DateTime, default=datetime.utcnow)

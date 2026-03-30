@@ -250,7 +250,25 @@ class NexoraCLI:
                 
                 if device_response.status_code == 201:
                     print("✓ Device registered successfully!")
-                    
+
+                    # Optional: link wallet address
+                    print("\nWallet Address (optional, press Enter to skip):")
+                    print("  Link your EVM wallet to receive future token rewards.")
+                    wallet = input("  Wallet (0x...): ").strip()
+                    if wallet:
+                        try:
+                            wr = requests.patch(
+                                f"{self.api_url}/user/{username}/wallet",
+                                json={"wallet_address": wallet},
+                                timeout=10,
+                            )
+                            if wr.status_code == 200:
+                                print(f"✓ Wallet linked: {wallet[:10]}...{wallet[-6:]}")
+                            else:
+                                print(f"  ✗ Wallet not linked: {wr.json().get('detail', 'invalid address')}")
+                        except Exception:
+                            print("  ✗ Could not link wallet (you can do this later)")
+
                     # Save config
                     config = {
                         "username": username,
@@ -579,6 +597,33 @@ class NexoraCLI:
         except Exception as e:
             print(f"✗ Error stopping node: {str(e)}")
     
+    def set_wallet(self, wallet_address: str):
+        """Link or update wallet address"""
+        print(f"\n{'='*50}")
+        print("NEXORA WALLET LINK")
+        print(f"{'='*50}\n")
+
+        if not self.config.get("username"):
+            print("✗ Not registered!")
+            return
+
+        try:
+            r = requests.patch(
+                f"{self.api_url}/user/{self.config['username']}/wallet",
+                json={"wallet_address": wallet_address},
+                timeout=10,
+            )
+            if r.status_code == 200:
+                data = r.json()
+                print(f"✓ Wallet linked: {data['wallet_address']}")
+                print(f"  Your points will be distributed to this address on token launch.")
+            else:
+                print(f"✗ {r.json().get('detail', 'Unknown error')}")
+        except requests.exceptions.ConnectionError:
+            print("✗ Cannot connect to server.")
+        except Exception as e:
+            print(f"✗ Error: {str(e)}")
+
     def claim(self):
         """Claim available points"""
         print(f"\n{'='*50}")
@@ -658,6 +703,14 @@ class NexoraCLI:
                 print(f"\nPoints:")
                 print(f"  Available: {points['points']:.2f}")
                 print(f"  Total Earned: {points['total_earned']:.2f}")
+                # Show wallet
+                user_r = requests.get(f"{self.api_url}/user/{self.config['username']}", timeout=10)
+                if user_r.status_code == 200:
+                    w = user_r.json().get("wallet_address")
+                    if w:
+                        print(f"  Wallet: {w[:10]}...{w[-6:]}")
+                    else:
+                        print(f"  Wallet: not linked (run: python main.py wallet 0xYOUR_ADDRESS)")
             else:
                 print(f"\nPoints: Unable to fetch")
         
@@ -705,6 +758,10 @@ Examples:
     # Claim command
     subparsers.add_parser("claim", help="Claim available points")
 
+    # Wallet command
+    wallet_parser = subparsers.add_parser("wallet", help="Link EVM wallet address to your account")
+    wallet_parser.add_argument("address", help="EVM wallet address (0x...)")
+
     # Chains command
     subparsers.add_parser("chains", help="List supported blockchain networks")
 
@@ -725,6 +782,8 @@ Examples:
         cli.status()
     elif args.command == "claim":
         cli.claim()
+    elif args.command == "wallet":
+        cli.set_wallet(args.address)
     elif args.command == "chains":
         try:
             r = requests.get(f"{cli.api_url}/chain/supported", timeout=10)

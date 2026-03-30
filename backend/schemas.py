@@ -27,11 +27,23 @@ class UserResponse(BaseModel):
     username: str
     referral_code: str
     invited_by: Optional[str] = None
+    wallet_address: Optional[str] = None
     points: float
     total_earned: float
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class WalletUpdate(BaseModel):
+    wallet_address: str = Field(..., min_length=42, max_length=42)
+
+    @field_validator("wallet_address")
+    @classmethod
+    def valid_evm_address(cls, v: str) -> str:
+        if not re.match(r"^0x[0-9a-fA-F]{40}$", v):
+            raise ValueError("Invalid EVM wallet address. Must be 0x followed by 40 hex chars.")
+        return v.lower()  # normalize to lowercase
 
 
 # ── DEVICE ────────────────────────────────────────────────────────────────────

@@ -5,7 +5,7 @@ Nexora Backend - User Routes
 from fastapi import APIRouter, Depends, HTTPException, Request, status
 from sqlalchemy.orm import Session
 from database import get_db
-from schemas import UserRegister, UserResponse, DeviceRegister, DeviceResponse
+from schemas import UserRegister, UserResponse, DeviceRegister, DeviceResponse, WalletUpdate
 from services.user_service import register_user, register_device, get_user_by_username
 
 router = APIRouter(prefix="/user", tags=["user"])
@@ -44,4 +44,29 @@ def get_user(username: str, db: Session = Depends(get_db)):
     user = get_user_by_username(db, username)
     if not user:
         raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
+    return user
+
+
+@router.patch("/{username}/wallet", response_model=UserResponse)
+def set_wallet(username: str, body: WalletUpdate, db: Session = Depends(get_db)):
+    """Link an EVM wallet address to a user account."""
+    from models import User
+    user = db.query(User).filter(User.username == username).first()
+    if not user:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail="User not found.")
+
+    # Check wallet not already taken by another user
+    existing = db.query(User).filter(
+        User.wallet_address == body.wallet_address,
+        User.username != username,
+    ).first()
+    if existing:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="Wallet address already linked to another account.",
+        )
+
+    user.wallet_address = body.wallet_address
+    db.commit()
+    db.refresh(user)
     return user
