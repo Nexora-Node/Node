@@ -74,9 +74,12 @@ function DashboardContent() {
     <main className="min-h-screen">
       {/* Nav */}
       <nav className="flex items-center justify-between px-6 py-4 border-b border-nexora-border">
-        <button onClick={() => router.push("/")} className="text-xl font-bold text-nexora-accent">Nexora</button>
+        <button onClick={() => router.push("/")} className="flex items-center gap-2 hover:opacity-80 transition">
+          <img src="/logo.png" alt="Nexora" className="w-8 h-8 rounded-lg" />
+          <span className="text-lg font-bold text-white">Nexora</span>
+        </button>
         <div className="flex items-center gap-4">
-          <span className="text-gray-400 text-sm">{username}</span>
+          <span className="text-gray-400 text-sm hidden md:block">{username}</span>
           <ConnectButton />
         </div>
       </nav>
