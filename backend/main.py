@@ -47,7 +47,10 @@ def root():
 
 @app.get("/health")
 def health_check():
-    return {"status": "healthy"}
+    import os
+    db_url = os.environ.get("DATABASE_URL", "NOT SET")
+    db_type = "postgresql" if "postgresql" in db_url or "postgres" in db_url else "sqlite"
+    return {"status": "healthy", "db": db_type}
 
 
 if __name__ == "__main__":
