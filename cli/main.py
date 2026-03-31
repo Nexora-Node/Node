@@ -15,6 +15,7 @@ import socket
 import uuid
 import secrets
 import threading
+import subprocess
 import requests
 from pathlib import Path
 from datetime import datetime
@@ -291,15 +292,63 @@ class NexoraCLI:
         except Exception as e:
             print(f"✗ Error: {str(e)}")
     
-    def start_node(self):
+    def start_node(self, daemon: bool = False):
         """Start node - resume existing node or register new one"""
         print(f"\n{'='*50}")
         print("NEXORA NODE START")
         print(f"{'='*50}\n")
 
         if PID_FILE.exists():
-            print("✗ Node is already running!")
-            print(f"  Use 'python main.py stop' to stop it first.")
+            try:
+                pid = int(PID_FILE.read_text().strip())
+                alive = False
+                if platform.system() == "Windows":
+                    import ctypes
+                    handle = ctypes.windll.kernel32.OpenProcess(0x100000, False, pid)
+                    if handle:
+                        ctypes.windll.kernel32.CloseHandle(handle)
+                        alive = True
+                else:
+                    try:
+                        os.kill(pid, 0)
+                        alive = True
+                    except OSError:
+                        pass
+                if alive:
+                    print("✗ Node is already running!")
+                    print(f"  Use 'python main.py stop' to stop it first.")
+                    return
+                else:
+                    PID_FILE.unlink()  # stale PID
+            except Exception:
+                PID_FILE.unlink()
+
+        # Re-launch as detached background process so terminal can be closed
+        if not daemon:
+            script = os.path.abspath(__file__)
+            log_file = CONFIG_DIR / "node.log"
+            CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+            if platform.system() == "Windows":
+                with open(log_file, "w") as lf:
+                    proc = subprocess.Popen(
+                        [sys.executable, script, "start", "--daemon"],
+                        stdout=lf, stderr=lf,
+                        creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
+                        close_fds=True,
+                    )
+            else:
+                with open(log_file, "w") as lf:
+                    proc = subprocess.Popen(
+                        [sys.executable, script, "start", "--daemon"],
+                        stdout=lf, stderr=lf,
+                        start_new_session=True,
+                        close_fds=True,
+                    )
+            print(f"✓ Node started in background (PID: {proc.pid})")
+            print(f"  Logs : {log_file}")
+            print(f"  Use 'python main.py status' to check status")
+            print(f"  Use 'python main.py stop' to stop the node")
+            print(f"\n  You can safely close this terminal.")
             return
 
         if not self.config.get("device_id"):
@@ -753,7 +802,8 @@ Dashboard: https://node-delta-ten.vercel.app
     )
     
     # Start command
-    subparsers.add_parser("start", help="Start node in background")
+    start_parser = subparsers.add_parser("start", help="Start node in background")
+    start_parser.add_argument("--daemon", action="store_true", help=argparse.SUPPRESS)
     
     # Stop command
     subparsers.add_parser("stop", help="Stop running node")
@@ -781,7 +831,7 @@ Dashboard: https://node-delta-ten.vercel.app
     if args.command == "register":
         cli.register(args.ref)
     elif args.command == "start":
-        cli.start_node()
+        cli.start_node(daemon=getattr(args, "daemon", False))
     elif args.command == "stop":
         cli.stop_node()
     elif args.command == "status":
