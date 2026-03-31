@@ -507,12 +507,14 @@ class NexoraCLI:
                 else:
                     error = response.json().get("detail", "Unknown error")
                     self._log(f"Heartbeat failed: {error}")
-                    # Invalid token — reset device and re-register automatically
+                    # Invalid token — clear saved state, reset server, stop thread
                     if "token" in error.lower() or "invalid" in error.lower():
                         node_info_file = CONFIG_DIR / "node_info.json"
                         if node_info_file.exists():
                             node_info_file.unlink()
-                        self._log("Token invalid — resetting device and re-registering...")
+                        if PID_FILE.exists():
+                            PID_FILE.unlink()
+                        self._log("Token invalid — cleared. Run 'python main.py start' to re-register.")
                         try:
                             requests.post(
                                 f"{self.api_url}/node/reset-device/{device_id}",
@@ -520,45 +522,6 @@ class NexoraCLI:
                             )
                         except Exception:
                             pass
-                        # Re-register new node
-                        try:
-                            import hashlib as _hl, secrets as _sec
-                            _salt = _sec.token_hex(8)
-                            _ts   = str(int(time.time()))
-                            _nonce_val = None
-                            for i in range(100000):
-                                candidate = f"{device_id}:{_ts}:{i}"
-                                h = _hl.sha256(candidate.encode()).hexdigest()
-                                if h.startswith("0000"):
-                                    _nonce_val = str(i)
-                                    break
-                            if _nonce_val:
-                                r = requests.post(
-                                    f"{self.api_url}/node/register",
-                                    json={
-                                        "device_id": device_id,
-                                        "system": f"{platform.system()}-{platform.release()}",
-                                        "hostname": socket.gethostname(),
-                                        "nonce": _nonce_val,
-                                    },
-                                    timeout=10,
-                                )
-                                if r.status_code == 200:
-                                    res = r.json()
-                                    node_id    = res["node_id"]
-                                    node_token = res["node_token"]
-                                    # Save new node info
-                                    _nif = CONFIG_DIR / "node_info.json"
-                                    _nif.write_text(json.dumps({
-                                        "node_id": node_id, "node_token": node_token,
-                                        "device_id": device_id,
-                                        "started_at": datetime.utcnow().isoformat(),
-                                    }, indent=2))
-                                    self._log(f"Re-registered new node: {node_id[:16]}...")
-                                    start_time = time.time()
-                                    continue
-                        except Exception as ex:
-                            self._log(f"Re-register failed: {ex}")
                         stop_event.set()
                         break
 
