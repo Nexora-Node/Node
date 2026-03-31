@@ -28,8 +28,10 @@ class UserResponse(BaseModel):
     referral_code: str
     invited_by: Optional[str] = None
     wallet_address: Optional[str] = None
-    points: float
+    tokens: float
     total_earned: float
+    claimed_tokens: float
+    last_claim_at: Optional[datetime] = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -108,12 +110,14 @@ class NodeRegisterResponse(BaseModel):
     node_token: str
 
 
-# ── POINTS ────────────────────────────────────────────────────────────────────
+# ── TOKENS ────────────────────────────────────────────────────────────────────
 
-class PointsResponse(BaseModel):
+class TokensResponse(BaseModel):
     username: str
-    points: float
+    tokens: float
     total_earned: float
+    claimed_tokens: float
+    last_claim_at: Optional[datetime] = None
 
 
 class ClaimRequest(BaseModel):
@@ -123,7 +127,8 @@ class ClaimRequest(BaseModel):
 class ClaimResponse(BaseModel):
     success: bool
     message: str
-    points_claimed: float
+    tokens_claimed: float
+    claimed_tokens: float
 
 
 # ── SECURITY ──────────────────────────────────────────────────────────────────

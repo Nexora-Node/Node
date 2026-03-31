@@ -35,8 +35,9 @@ def register_user(db: Session, user_data: UserRegister) -> User:
         username=user_data.username,
         referral_code=_unique_referral_code(db),
         invited_by=user_data.referral_code,
-        points=0.0,
+        tokens=0.0,
         total_earned=0.0,
+        claimed_tokens=0.0,
     )
     db.add(new_user)
 

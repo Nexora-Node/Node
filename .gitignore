@@ -57,3 +57,10 @@ Thumbs.db
 web/node_modules/
 web/.next/
 web/.env.local
+
+# Contracts
+contracts/node_modules/
+contracts/artifacts/
+contracts/cache/
+contracts/.env
+contracts/typechain-types/

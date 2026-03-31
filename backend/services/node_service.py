@@ -222,9 +222,27 @@ def process_heartbeat(
 
     # ── All checks passed — compute rewards ──────────────────────────────────
     uptime_delta = max(0.0, uptime - node.uptime)
-    raw_points = uptime_delta / 60.0                        # 1 pt / min
+
+    # Check supply cap before awarding
+    from services.mining_rate_service import current_rate, add_distributed, is_supply_exhausted
+    if is_supply_exhausted(db):
+        # Still update node stats, just no reward
+        node.uptime = uptime
+        node.last_seen = datetime.utcnow()
+        node.last_heartbeat = datetime.utcnow()
+        node.ip_address = ip_address
+        db.commit()
+        return {
+            "success": True,
+            "message": "Heartbeat received. Mining supply exhausted.",
+            "tokens_earned": 0.0,
+            "node_score": node.node_score,
+        }
+
+    rate = current_rate(db)                             # tokens/min, halving-adjusted
+    raw_tokens = (uptime_delta / 60.0) * rate
     multiplier = reward_multiplier(node.node_score)
-    adjusted_points = raw_points * multiplier
+    adjusted_tokens = raw_tokens * multiplier
 
     # Update node
     node.uptime = uptime
@@ -236,20 +254,21 @@ def process_heartbeat(
     if uptime > 3600:
         node.node_score = calculate_node_score(node.node_score, [], stable_uptime=uptime)
 
-    # Credit user
+    # Credit user — capped at remaining mining supply
     device = db.query(Device).filter(Device.device_id == device_id).first()
     if device:
         user = db.query(User).filter(User.id == device.user_id).first()
-        if user and adjusted_points > 0:
-            user.points += adjusted_points
-            user.total_earned += adjusted_points
+        if user and adjusted_tokens > 0:
+            credited = add_distributed(db, adjusted_tokens)
+            user.tokens += credited
+            user.total_earned += credited
 
     db.commit()
 
     return {
         "success": True,
         "message": "Heartbeat received.",
-        "points_earned": round(adjusted_points, 6),
+        "tokens_earned": round(adjusted_tokens, 6),
         "node_score": node.node_score,
     }
 

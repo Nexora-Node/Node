@@ -17,8 +17,10 @@ class User(Base):
     invited_by = Column(String(20), nullable=True)
     referral_used = Column(Boolean, default=False)
     wallet_address = Column(String(42), nullable=True, unique=True, index=True)  # EVM wallet 0x...
-    points = Column(Float, default=0.0)
+    tokens = Column(Float, default=0.0)
     total_earned = Column(Float, default=0.0)
+    claimed_tokens = Column(Float, default=0.0)
+    last_claim_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
 
     devices = relationship("Device", back_populates="user")
@@ -92,3 +94,15 @@ class SecurityLog(Base):
     ip_address = Column(String(45), nullable=True, index=True)
     details = Column(Text, nullable=True)
     created_at = Column(DateTime, default=datetime.utcnow)
+
+
+class MiningConfig(Base):
+    """Global mining configuration — single row, id=1."""
+    __tablename__ = "mining_config"
+
+    id = Column(Integer, primary_key=True, default=1)
+    mining_start = Column(DateTime, nullable=False, default=datetime.utcnow)
+    halving_interval_days = Column(Integer, default=24)           # epoch = 24 days
+    base_rate_per_min = Column(Float, default=0.28935185)         # 10000 / 34560
+    total_distributed = Column(Float, default=0.0)
+    mining_supply_cap = Column(Float, default=200_000.0)

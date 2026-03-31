@@ -465,7 +465,9 @@ class NexoraCLI:
                 )
 
                 if response.status_code == 200:
-                    print(f"[{datetime.now().strftime('%H:%M:%S')}] Heartbeat sent (uptime: {uptime:.0f}s)")
+                    data = response.json()
+                    earned = data.get('tokens_earned', 0)
+                    print(f"[{datetime.now().strftime('%H:%M:%S')}] Heartbeat OK — +{earned:.6f} NEXORA (uptime: {uptime:.0f}s)")
                 else:
                     error = response.json().get("detail", "Unknown error")
                     print(f"[{datetime.now().strftime('%H:%M:%S')}] Heartbeat failed: {error}")
@@ -548,7 +550,7 @@ class NexoraCLI:
                         print(f"[{datetime.now().strftime('%H:%M:%S')}] "
                               f"[Chain:{cn['chain_name']}] "
                               f"block={local_block:,} lag={data.get('sync_lag', '?')} "
-                              f"+{data.get('bonus_points', 0):.3f}pts")
+                              f"+{data.get('bonus_tokens', data.get('bonus_points', 0)):.6f} NEXORA")
                     else:
                         print(f"[Chain:{cn['chain_name']}] {hb.json().get('detail', 'error')}")
                 except Exception as e:
@@ -635,7 +637,7 @@ class NexoraCLI:
             if r.status_code == 200:
                 data = r.json()
                 print(f"✓ Wallet linked: {data['wallet_address']}")
-                print(f"  Your points will be distributed to this address on token launch.")
+                print(f"  Your tokens will be distributed to this address on token launch.")
             else:
                 print(f"✗ {r.json().get('detail', 'Unknown error')}")
         except requests.exceptions.ConnectionError:
@@ -644,53 +646,34 @@ class NexoraCLI:
             print(f"✗ Error: {str(e)}")
 
     def claim(self):
-        """Claim available points"""
+        """Claim available NEXORA"""
         print(f"\n{'='*50}")
-        print("NEXORA CLAIM POINTS")
+        print("NEXORA CLAIM")
         print(f"{'='*50}\n")
-
-        if not self.config.get("username"):
-            print("✗ Not registered! Use 'python main.py register --ref CODE' first.")
-            return
-
-        username = self.config["username"]
-        try:
-            response = requests.post(
-                f"{self.api_url}/points/claim",
-                json={"username": username},
-                timeout=10,
-            )
-            if response.status_code == 200:
-                data = response.json()
-                print(f"✓ {data['message']}")
-            else:
-                print(f"✗ {response.json().get('detail', 'Unknown error')}")
-        except requests.exceptions.ConnectionError:
-            print("✗ Cannot connect to server.")
-        except Exception as e:
-            print(f"✗ Error: {str(e)}")
+        print("To claim your NEXORA tokens, open the dashboard:")
+        print("  https://node-delta-ten.vercel.app")
+        print("\nClaim is done on-chain via the web dashboard.")
+        print("Make sure your wallet is linked first.")
 
     def status(self):
         """Show node and reward status"""
         print(f"\n{'='*50}")
         print("NEXORA STATUS")
         print(f"{'='*50}\n")
-        
-        # Check if registered
+
         if not self.config.get("username"):
             print("✗ Not registered!")
             print("  Use 'python main.py register --ref CODE' to register.")
             return
-        
+
         print(f"Username: {self.config['username']}")
         print(f"Device ID: {self.config['device_id']}")
         print(f"Referral Code: {self.config['referral_code']} (share to invite others)")
-        
+
         # Check if node is running
         if PID_FILE.exists():
             print(f"\nNode Status: RUNNING")
-            
-            # Load node info
+
             node_info_file = CONFIG_DIR / "node_info.json"
             if node_info_file.exists():
                 with open(node_info_file, 'r') as f:
@@ -698,7 +681,6 @@ class NexoraCLI:
                 print(f"Node ID: {node_info['node_id']}")
                 print(f"Started: {node_info['started_at']}")
 
-            # Show chain nodes
             chain_info_file = CONFIG_DIR / "chain_info.json"
             if chain_info_file.exists():
                 with open(chain_info_file, 'r') as f:
@@ -709,34 +691,35 @@ class NexoraCLI:
                         print(f"  {cn['chain_name']} — port {cn['port']} — {cn['multiplier']}x reward")
         else:
             print(f"\nNode Status: STOPPED")
-        
-        # Get points info
+
+        # Get NEXORA balance
         try:
             response = requests.get(
-                f"{self.api_url}/points/{self.config['username']}",
+                f"{self.api_url}/tokens/{self.config['username']}",
                 timeout=10
             )
-            
+
             if response.status_code == 200:
-                points = response.json()
-                print(f"\nPoints:")
-                print(f"  Available: {points['points']:.2f}")
-                print(f"  Total Earned: {points['total_earned']:.2f}")
-                # Show wallet
+                t = response.json()
+                print(f"\nNEXORA Balance:")
+                print(f"  Available : {t['tokens']:.6f} NEXORA")
+                print(f"  Total Earned: {t['total_earned']:.6f} NEXORA")
+                print(f"  Claimed   : {t['claimed_tokens']:.6f} NEXORA")
                 user_r = requests.get(f"{self.api_url}/user/{self.config['username']}", timeout=10)
                 if user_r.status_code == 200:
                     w = user_r.json().get("wallet_address")
                     if w:
-                        print(f"  Wallet: {w[:10]}...{w[-6:]}")
+                        print(f"  Wallet    : {w[:10]}...{w[-6:]}")
                     else:
-                        print(f"  Wallet: not linked (run: python main.py wallet 0xYOUR_ADDRESS)")
+                        print(f"  Wallet    : not linked (run: python main.py wallet 0xYOUR_ADDRESS)")
+                print(f"\n  → Claim at: https://node-delta-ten.vercel.app")
             else:
-                print(f"\nPoints: Unable to fetch")
-        
+                print(f"\nNEXORA: Unable to fetch")
+
         except requests.exceptions.ConnectionError:
-            print(f"\nPoints: Unable to connect to server")
+            print(f"\nNEXORA: Unable to connect to server")
         except Exception as e:
-            print(f"\nPoints: Error - {str(e)}")
+            print(f"\nNEXORA: Error - {str(e)}")
 
 
 def main():
@@ -779,7 +762,7 @@ Dashboard: https://node-delta-ten.vercel.app
     subparsers.add_parser("status", help="Show node and reward status")
     
     # Claim command
-    subparsers.add_parser("claim", help="Claim available points")
+    subparsers.add_parser("claim", help="Claim available tokens")
 
     # Wallet command
     wallet_parser = subparsers.add_parser("wallet", help="Link EVM wallet address to your account")

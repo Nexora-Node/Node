@@ -4,7 +4,8 @@ import { useEffect, useState } from "react";
 import { useSearchParams, useRouter } from "next/navigation";
 import { ConnectButton } from "@rainbow-me/rainbowkit";
 import { useAccount } from "wagmi";
-import { getUser, getPoints, getUserNodes, getChainNodes, UserInfo, NodeInfo, ChainNodeInfo, PointsInfo } from "../../lib/api";
+import { getUser, getTokens, getUserNodes, getChainNodes, claimTokens, confirmClaim, getMiningInfo, UserInfo, NodeInfo, ChainNodeInfo, TokensInfo, MiningInfo } from "../../lib/api";
+import { useWriteContract, useWaitForTransactionReceipt } from "wagmi";
 import { NodeCard } from "../../components/NodeCard";
 
 function DashboardContent() {
@@ -14,32 +15,54 @@ function DashboardContent() {
   const username = params.get("username") || "";
 
   const [user, setUser] = useState<UserInfo | null>(null);
-  const [points, setPoints] = useState<PointsInfo | null>(null);
+  const [tokens, setTokens] = useState<TokensInfo | null>(null);
+  const [miningInfo, setMiningInfo] = useState<MiningInfo | null>(null);
   const [nodes, setNodes] = useState<NodeInfo[]>([]);
   const [chainMap, setChainMap] = useState<Record<string, ChainNodeInfo[]>>({});
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [claiming, setClaiming] = useState(false);
+  const [claimError, setClaimError] = useState("");
+
+  // ClaimDistributor ABI (only the claim function)
+  const DISTRIBUTOR_ABI = [
+    {
+      name: "claim",
+      type: "function",
+      stateMutability: "nonpayable",
+      inputs: [
+        { name: "amount",   type: "uint256" },
+        { name: "nonce",    type: "uint256" },
+        { name: "deadline", type: "uint256" },
+        { name: "v",        type: "uint8"   },
+        { name: "r",        type: "bytes32" },
+        { name: "s",        type: "bytes32" },
+      ],
+      outputs: [],
+    },
+  ] as const;
 
   useEffect(() => {
     if (!username) { router.push("/"); return; }
     load();
-    const interval = setInterval(load, 30000); // refresh every 30s
+    const interval = setInterval(load, 30000);
     return () => clearInterval(interval);
   }, [username]);
 
   async function load() {
     try {
-      const [u, p, n] = await Promise.all([
+      const [u, t, n, m] = await Promise.all([
         getUser(username),
-        getPoints(username),
+        getTokens(username),
         getUserNodes(username),
+        getMiningInfo(),
       ]);
       if (!u) { setError("User not found"); setLoading(false); return; }
       setUser(u);
-      setPoints(p);
+      setTokens(t);
       setNodes(n);
+      setMiningInfo(m);
 
-      // Load chain nodes for each node
       const map: Record<string, ChainNodeInfo[]> = {};
       await Promise.all(n.map(async node => {
         map[node.node_id] = await getChainNodes(node.node_id);
@@ -49,6 +72,42 @@ function DashboardContent() {
       setError("Failed to load data");
     } finally {
       setLoading(false);
+    }
+  }
+
+  const { writeContractAsync } = useWriteContract();
+
+  async function handleClaim() {
+    if (!tokens || tokens.tokens < 1) return;
+    setClaiming(true);
+    setClaimError("");
+    try {
+      // 1. Get signed voucher from backend
+      const voucher = await claimTokens(username);
+
+      // 2. Submit to ClaimDistributor contract (user pays gas)
+      const txHash = await writeContractAsync({
+        address: voucher.contract as `0x${string}`,
+        abi: DISTRIBUTOR_ABI,
+        functionName: "claim",
+        args: [
+          BigInt(voucher.amount),
+          BigInt(voucher.nonce),
+          BigInt(voucher.deadline),
+          voucher.v,
+          voucher.r as `0x${string}`,
+          voucher.s as `0x${string}`,
+        ],
+        chainId: voucher.chain_id,
+      });
+
+      // 3. Confirm with backend to deduct DB balance
+      await confirmClaim(username, txHash, voucher.pending_amount);
+      await load();
+    } catch (e: any) {
+      setClaimError(e.shortMessage || e.message || "Claim failed");
+    } finally {
+      setClaiming(false);
     }
   }
 
@@ -109,10 +168,10 @@ function DashboardContent() {
         )}
 
         {/* Stats row */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-8">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-6">
           {[
-            { label: "Available Points", value: points?.points.toFixed(2) || "0", color: "text-nexora-accent" },
-            { label: "Total Earned", value: points?.total_earned.toFixed(2) || "0", color: "text-white" },
+            { label: "Available NEXORA", value: tokens?.tokens.toFixed(4) || "0", color: "text-nexora-accent" },
+            { label: "Total Earned", value: tokens?.total_earned.toFixed(4) || "0", color: "text-white" },
             { label: "Active Nodes", value: activeNodes.toString(), color: "text-nexora-green" },
             { label: "Chain Nodes", value: totalChainNodes.toString(), color: "text-nexora-yellow" },
           ].map(s => (
@@ -121,6 +180,71 @@ function DashboardContent() {
               <div className="text-gray-400 text-sm mt-1">{s.label}</div>
             </div>
           ))}
+        </div>
+
+        {/* Mining rate info */}
+        {miningInfo && (
+          <div className="bg-nexora-card border border-nexora-border rounded-xl p-4 mb-6 flex flex-wrap gap-4 items-center justify-between">
+            <div className="flex gap-6">
+              <div>
+                <div className="text-xs text-gray-500">Mining Rate</div>
+                <div className="font-bold text-nexora-accent">
+                  {miningInfo.current_rate_per_min.toFixed(6)} <span className="text-gray-400 font-normal text-xs">NEXORA/min</span>
+                </div>
+              </div>
+              <div>
+                <div className="text-xs text-gray-500">Epoch</div>
+                <div className="font-bold text-white">#{miningInfo.current_epoch}</div>
+              </div>
+              <div>
+                <div className="text-xs text-gray-500">Next Decay</div>
+                <div className="font-bold text-nexora-yellow">{miningInfo.days_until_next_decay}d</div>
+              </div>
+              <div>
+                <div className="text-xs text-gray-500">Remaining Supply</div>
+                <div className="font-bold text-white">
+                  {miningInfo.remaining_supply.toFixed(0)} <span className="text-gray-400 font-normal text-xs">/ {miningInfo.mining_supply_cap.toFixed(0)}</span>
+                </div>
+              </div>
+            </div>
+            {miningInfo.supply_exhausted && (
+              <div className="text-nexora-red text-sm font-semibold">Mining supply exhausted</div>
+            )}
+          </div>
+        )}
+
+        {/* Claim tokens panel */}
+        <div className="bg-nexora-card border border-nexora-border rounded-xl p-4 mb-6 flex items-center justify-between">
+          <div>
+            <div className="text-sm text-gray-400 mb-1">Claimed NEXORA</div>
+            <div className="font-bold text-white">{tokens?.claimed_tokens.toFixed(4) || "0"} <span className="text-gray-500 text-xs font-normal">NEXORA</span></div>
+            {tokens?.last_claim_at && (
+              <div className="text-xs text-gray-500 mt-1">
+                Last claim: {new Date(tokens.last_claim_at).toLocaleString()}
+              </div>
+            )}
+            {claimError && (
+              <div className="text-xs text-red-400 mt-2">{claimError}</div>
+            )}
+            <div className="text-xs text-gray-600 mt-1">0.05% fee on each claim → DEX listing fund</div>
+          </div>
+          <div className="text-right">
+            {tokens && tokens.tokens >= 1 && (
+              <div className="text-xs text-gray-500 mb-2">
+                You receive ≈ {(tokens.tokens * 0.9995).toFixed(6)} NEXORA
+              </div>
+            )}
+            <button
+              onClick={handleClaim}
+              disabled={claiming || !tokens || tokens.tokens < 1 || !user?.wallet_address}
+              className="bg-nexora-accent text-black font-semibold px-5 py-2 rounded-lg text-sm hover:opacity-90 disabled:opacity-40 disabled:cursor-not-allowed"
+            >
+              {claiming ? "Confirm in wallet..." : "Claim NEXORA"}
+            </button>
+            {!user?.wallet_address && (
+              <div className="text-xs text-gray-500 mt-1">Link wallet first</div>
+            )}
+          </div>
         </div>
 
         {/* Wallet info */}

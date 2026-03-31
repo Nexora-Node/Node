@@ -46,14 +46,15 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-from routes import user_routes, node_routes, points_routes, security_routes
-from routes import chain_routes
+from routes import user_routes, node_routes, token_routes, security_routes
+from routes import chain_routes, mining_routes
 
 app.include_router(user_routes.router)
 app.include_router(node_routes.router)
-app.include_router(points_routes.router)
+app.include_router(token_routes.router)
 app.include_router(security_routes.router)
 app.include_router(chain_routes.router)
+app.include_router(mining_routes.router)
 
 
 @app.get("/")

@@ -234,22 +234,25 @@ def process_chain_heartbeat(
         db.commit()
         raise ValueError(f"Node out of sync: {lag} blocks behind. Rewards paused.")
 
-    # Calculate bonus points
-    # Base: 1 pt/min from uptime, chain bonus = multiplier applied on top
-    # Here we give a flat bonus per heartbeat based on chain multiplier
-    # (uptime points already handled by main heartbeat)
-    bonus_points = chain["multiplier"] * 0.5  # 0.5 pt per heartbeat × multiplier
+    # Calculate bonus tokens (halving-adjusted)
+    from services.mining_rate_service import current_rate, add_distributed, is_supply_exhausted
+    if is_supply_exhausted(db):
+        bonus_tokens = 0.0
+    else:
+        rate = current_rate(db)
+        bonus_tokens = chain["multiplier"] * 0.5 * rate  # scaled by current rate
 
     # Credit user
     nexora_node = db.query(Node).filter(Node.node_id == node_id).first()
-    if nexora_node:
+    if nexora_node and bonus_tokens > 0:
         from models import Device, User
         device = db.query(Device).filter(Device.device_id == nexora_node.device_id).first()
         if device:
             user = db.query(User).filter(User.id == device.user_id).first()
             if user:
-                user.points += bonus_points
-                user.total_earned += bonus_points
+                credited = add_distributed(db, bonus_tokens)
+                user.tokens += credited
+                user.total_earned += credited
 
     cn.last_block = local_block
     cn.last_verified = datetime.utcnow()
@@ -263,7 +266,7 @@ def process_chain_heartbeat(
         "chain_name": chain["name"],
         "local_block": local_block,
         "sync_lag": lag,
-        "bonus_points": round(bonus_points, 4),
+        "bonus_tokens": round(bonus_tokens, 4),
         "reward_multiplier": chain["multiplier"],
     }
 

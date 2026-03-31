@@ -9,5 +9,8 @@ pydantic==2.11.3
 # PostgreSQL driver (used on Railway)
 psycopg2-binary==2.9.10
 
+# EIP-712 voucher signing
+eth-account==0.13.4
+
 # CLI
 requests==2.32.3

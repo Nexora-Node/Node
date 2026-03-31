@@ -5,8 +5,10 @@ export interface UserInfo {
   username: string;
   referral_code: string;
   wallet_address: string | null;
-  points: number;
+  tokens: number;
   total_earned: number;
+  claimed_tokens: number;
+  last_claim_at: string | null;
   created_at: string;
 }
 
@@ -30,10 +32,12 @@ export interface ChainNodeInfo {
   last_verified: string | null;
 }
 
-export interface PointsInfo {
+export interface TokensInfo {
   username: string;
-  points: number;
+  tokens: number;
   total_earned: number;
+  claimed_tokens: number;
+  last_claim_at: string | null;
 }
 
 export async function getUser(username: string): Promise<UserInfo | null> {
@@ -42,10 +46,39 @@ export async function getUser(username: string): Promise<UserInfo | null> {
   return r.json();
 }
 
-export async function getPoints(username: string): Promise<PointsInfo | null> {
-  const r = await fetch(`${API}/points/${username}`, { cache: "no-store" });
+export async function getTokens(username: string): Promise<TokensInfo | null> {
+  const r = await fetch(`${API}/tokens/${username}`, { cache: "no-store" });
   if (!r.ok) return null;
   return r.json();
+}
+
+export async function claimTokens(username: string): Promise<{
+  amount: string;
+  nonce: string;
+  deadline: number;
+  v: number;
+  r: string;
+  s: string;
+  contract: string;
+  chain_id: number;
+  pending_amount: number;
+}> {
+  const r = await fetch(`${API}/tokens/prepare-claim`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username }),
+  });
+  const data = await r.json();
+  if (!r.ok) throw new Error(data.detail || "Failed to prepare claim");
+  return data;
+}
+
+export async function confirmClaim(username: string, tx_hash: string, amount: number): Promise<void> {
+  await fetch(`${API}/tokens/confirm-claim`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ username, tx_hash, amount }),
+  });
 }
 
 export async function getUserNodes(username: string): Promise<NodeInfo[]> {
@@ -70,6 +103,24 @@ export async function linkWallet(username: string, walletAddress: string): Promi
     const err = await r.json();
     throw new Error(err.detail || "Failed to link wallet");
   }
+  return r.json();
+}
+
+export interface MiningInfo {
+  current_epoch: number;
+  current_rate_per_min: number;
+  decay_factor: number;
+  epoch_duration_days: number;
+  days_until_next_decay: number;
+  total_distributed: number;
+  mining_supply_cap: number;
+  remaining_supply: number;
+  supply_exhausted: boolean;
+}
+
+export async function getMiningInfo(): Promise<MiningInfo | null> {
+  const r = await fetch(`${API}/mining/info`, { cache: "no-store" });
+  if (!r.ok) return null;
   return r.json();
 }
 

@@ -51,7 +51,8 @@ def seed():
             username="admin",
             referral_code=code,
             invited_by=None,
-            points=0.0,
+            tokens=0.0,
+            claimed_tokens=0.0,
             total_earned=0.0,
         )
         db.add(admin)
