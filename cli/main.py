@@ -837,10 +837,11 @@ class NexoraCLI:
                 else:
                     print(f"  {DIM}Connecting...{RESET}")
 
-                # Nodes
-                print(f"\n  {BOLD}NODES ({len(nodes_data)}){RESET}")
-                if nodes_data:
-                    for n in nodes_data:
+                # Nodes — only show active ones
+                active_nodes = [n for n in nodes_data if n.get("status") == "active"]
+                print(f"\n  {BOLD}NODES ({len(active_nodes)} active){RESET}")
+                if active_nodes:
+                    for n in active_nodes:
                         nid    = n.get("node_id", "")[:16]
                         score  = n.get("node_score", 0)
                         uptime = fmt_uptime(n.get("uptime", 0))
@@ -850,7 +851,7 @@ class NexoraCLI:
                               f"uptime {WHITE}{uptime}{RESET}  "
                               f"score {sc}{score}/100{RESET}")
                 else:
-                    print(f"  {DIM}No nodes found{RESET}")
+                    print(f"  {DIM}No active nodes{RESET}")
 
                 # Live log — fixed 8 lines height
                 print(f"\n{SEP}")
