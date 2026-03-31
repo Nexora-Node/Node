@@ -20,6 +20,12 @@ from database import engine, Base
 async def lifespan(app: FastAPI):
     # Import models so all tables are registered before create_all
     import models  # noqa
+    # Run migration first (adds tokens, claimed_tokens, last_claim_at columns)
+    try:
+        from migrate_tokens import migrate
+        migrate()
+    except Exception as e:
+        print(f"WARNING: Migration error: {e}")
     try:
         Base.metadata.create_all(bind=engine)
     except Exception as e:
