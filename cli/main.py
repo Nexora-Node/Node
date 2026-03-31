@@ -330,28 +330,22 @@ class NexoraCLI:
         node_id = None
         node_token = None
 
-        # Try resume saved node
+        # Try resume saved node — always prefer saved node_info
         if node_info_file.exists():
             try:
                 saved = json.loads(node_info_file.read_text())
                 node_id    = saved.get("node_id")
                 node_token = saved.get("node_token")
-                try:
-                    test = requests.post(
-                        f"{self.api_url}/node/heartbeat",
-                        json={"node_id": node_id, "node_token": node_token,
-                              "device_id": device_id, "uptime": 0.0},
-                        timeout=5,
-                    )
-                    if test.status_code in (401, 400):
-                        node_id = node_token = None
-                        node_info_file.unlink(missing_ok=True)
-                except Exception:
-                    pass
+                if node_id and node_token:
+                    print(f"{INF} Resuming node: {node_id[:16]}...")
+                else:
+                    node_id = node_token = None
+                    node_info_file.unlink(missing_ok=True)
             except Exception:
                 node_id = None
+                node_info_file.unlink(missing_ok=True)
 
-        # Register new node if needed
+        # Register new node only if no saved node
         if not node_id:
             print(f"{INF} Generating proof-of-work...")
             nonce = self.generate_proof_of_work(device_id)
@@ -374,45 +368,34 @@ class NexoraCLI:
                     print(f"{OK} Node registered!")
                 else:
                     detail = r.json().get('detail', '')
-                    # If limit hit, try to resume existing node from server
                     if "Maximum" in detail or "limit" in detail.lower():
-                        print(f"{INF} Node limit reached — resuming existing node...")
+                        # Limit hit but no saved node_info — reset device and retry once
+                        print(f"{INF} Node limit reached — resetting device...")
                         try:
-                            existing = requests.get(
-                                f"{self.api_url}/node/status/{device_id}", timeout=10
+                            requests.post(
+                                f"{self.api_url}/node/reset-device/{device_id}", timeout=5
                             )
-                            if existing.ok:
-                                nodes = existing.json()
-                                active = [n for n in nodes if n.get("status") == "active"]
-                                pick = active[0] if active else (nodes[0] if nodes else None)
-                                if pick:
-                                    node_id = pick["node_id"]
-                                    node_token = self.config.get("node_token")
-                                    if not node_token:
-                                        # No token saved — must stop all nodes and re-register
-                                        print(f"{ERR} No saved token. Stopping old nodes...")
-                                        for n in nodes:
-                                            try:
-                                                requests.post(f"{self.api_url}/node/stop", json={
-                                                    "node_id": n["node_id"],
-                                                    "node_token": "",
-                                                    "device_id": device_id,
-                                                }, timeout=5)
-                                            except Exception:
-                                                pass
-                                        # Force re-register by clearing node_id
-                                        node_id = None
-                                        node_token = None
-                                    else:
-                                        print(f"{OK} Resuming node: {node_id[:16]}...")
-                                else:
-                                    print(f"{ERR} {detail}")
-                                    return
-                            else:
-                                print(f"{ERR} {detail}")
-                                return
-                        except Exception as e:
-                            print(f"{ERR} {detail} ({e})")
+                        except Exception:
+                            pass
+                        # Retry register after reset
+                        nonce2 = self.generate_proof_of_work(device_id)
+                        r2 = requests.post(
+                            f"{self.api_url}/node/register",
+                            json={
+                                "device_id": device_id,
+                                "system": f"{platform.system()}-{platform.release()}",
+                                "hostname": socket.gethostname(),
+                                "nonce": nonce2,
+                            },
+                            timeout=10,
+                        )
+                        if r2.status_code == 200:
+                            res = r2.json()
+                            node_id    = res["node_id"]
+                            node_token = res["node_token"]
+                            print(f"{OK} Node registered after reset!")
+                        else:
+                            print(f"{ERR} {r2.json().get('detail', 'Failed')}")
                             return
                     else:
                         print(f"{ERR} {detail}")
@@ -420,33 +403,6 @@ class NexoraCLI:
             except requests.exceptions.ConnectionError:
                 print(f"{ERR} Cannot connect to server.")
                 return
-            except Exception as e:
-                print(f"{ERR} {e}")
-                return
-
-        # If resume cleared node_id (no saved token), try register fresh
-        if not node_id:
-            print(f"{INF} Registering fresh node...")
-            nonce = self.generate_proof_of_work(device_id)
-            try:
-                r = requests.post(
-                    f"{self.api_url}/node/register",
-                    json={
-                        "device_id": device_id,
-                        "system": f"{platform.system()}-{platform.release()}",
-                        "hostname": socket.gethostname(),
-                        "nonce": nonce,
-                    },
-                    timeout=10,
-                )
-                if r.status_code == 200:
-                    res = r.json()
-                    node_id    = res["node_id"]
-                    node_token = res["node_token"]
-                    print(f"{OK} Node registered!")
-                else:
-                    print(f"{ERR} {r.json().get('detail', 'Registration failed')}")
-                    return
             except Exception as e:
                 print(f"{ERR} {e}")
                 return
@@ -500,20 +456,18 @@ class NexoraCLI:
         finally:
             print("\nStopping node...")
             stop_event.set()
-            # Notify server
+            # Notify server — set node to stopped (not deleted)
             try:
                 requests.post(f"{self.api_url}/node/stop", json={
                     "node_id": node_id, "node_token": node_token, "device_id": device_id,
                 }, timeout=5)
             except Exception:
                 pass
-            # Clean up local state
+            # Keep node_info.json so next start can resume same node
+            # Only clean up PID
             if PID_FILE.exists():
                 PID_FILE.unlink()
-            node_info_f = CONFIG_DIR / "node_info.json"
-            if node_info_f.exists():
-                node_info_f.unlink()
-            print("Node stopped. Run 'python main.py start' to restart.")
+            print("Node stopped. Run 'python main.py start' to resume.")
     
     def _log(self, msg: str):
         """Write log entry to node.log file (safe from any thread)."""
