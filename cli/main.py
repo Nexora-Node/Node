@@ -353,6 +353,8 @@ class NexoraCLI:
             print(f"  Use 'python main.py status' to check status")
             print(f"  Use 'python main.py stop' to stop the node")
             print(f"\n  You can safely close this terminal.")
+            time.sleep(1)   # brief pause so daemon registers node first
+            self.dashboard()
             return
 
         if not self.config.get("device_id"):
