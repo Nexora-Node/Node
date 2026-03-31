@@ -378,8 +378,40 @@ class NexoraCLI:
                     node_token = res["node_token"]
                     print(f"{OK} Node registered!")
                 else:
-                    print(f"{ERR} {r.json().get('detail', 'Registration failed')}")
-                    return
+                    detail = r.json().get('detail', '')
+                    # If limit hit, try to resume existing node from server
+                    if "Maximum" in detail or "limit" in detail.lower():
+                        print(f"{INF} Node limit reached — resuming existing node...")
+                        try:
+                            existing = requests.get(
+                                f"{self.api_url}/node/status/{device_id}", timeout=10
+                            )
+                            if existing.ok:
+                                nodes = existing.json()
+                                # Pick first active node
+                                active = [n for n in nodes if n.get("status") == "active"]
+                                pick = active[0] if active else (nodes[0] if nodes else None)
+                                if pick:
+                                    node_id = pick["node_id"]
+                                    # node_token not returned by status — load from config
+                                    node_token = self.config.get("node_token")
+                                    if not node_token:
+                                        print(f"{ERR} Cannot resume: node_token not found locally.")
+                                        print(f"  Run 'python main.py stop' then try again.")
+                                        return
+                                    print(f"{OK} Resuming node: {node_id[:16]}...")
+                                else:
+                                    print(f"{ERR} {detail}")
+                                    return
+                            else:
+                                print(f"{ERR} {detail}")
+                                return
+                        except Exception as e:
+                            print(f"{ERR} {detail} ({e})")
+                            return
+                    else:
+                        print(f"{ERR} {detail}")
+                        return
             except requests.exceptions.ConnectionError:
                 print(f"{ERR} Cannot connect to server.")
                 return
@@ -574,6 +606,9 @@ class NexoraCLI:
             try:
                 with open(node_info_file, 'r') as f:
                     node_info = json.load(f)
+                # Preserve node_token in config so resume works next start
+                self.config["node_token"] = node_info.get("node_token")
+                self.save_config(self.config)
                 requests.post(
                     f"{self.api_url}/node/stop",
                     json={
