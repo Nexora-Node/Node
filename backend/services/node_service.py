@@ -239,10 +239,11 @@ def process_heartbeat(
             "node_score": node.node_score,
         }
 
-    rate = current_rate(db)                             # tokens/min, halving-adjusted
+    rate = current_rate(db)
     raw_tokens = (uptime_delta / 60.0) * rate
     multiplier = reward_multiplier(node.node_score)
     adjusted_tokens = raw_tokens * multiplier
+    print(f"DEBUG heartbeat: uptime={uptime} node.uptime={node.uptime} delta={uptime_delta:.2f} rate={rate:.6f} mult={multiplier:.2f} adj={adjusted_tokens:.8f}")
 
     # Update node
     node.uptime = uptime
@@ -255,6 +256,7 @@ def process_heartbeat(
         node.node_score = calculate_node_score(node.node_score, [], stable_uptime=uptime)
 
     # Credit user — capped at remaining mining supply
+    credited = 0.0
     device = db.query(Device).filter(Device.device_id == device_id).first()
     if device:
         user = db.query(User).filter(User.id == device.user_id).first()
@@ -268,7 +270,7 @@ def process_heartbeat(
     return {
         "success": True,
         "message": "Heartbeat received.",
-        "tokens_earned": round(adjusted_tokens, 6),
+        "tokens_earned": round(credited, 8),
         "node_score": node.node_score,
     }
 
