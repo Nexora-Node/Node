@@ -505,10 +505,13 @@ class NexoraCLI:
                     earned = data.get('tokens_earned', 0)
                     self._log(f"Heartbeat OK — +{earned:.6f} NEXORA (uptime: {uptime:.0f}s)")
                 else:
-                    error = response.json().get("detail", "Unknown error")
+                    try:
+                        error = response.json().get("detail", "Unknown error")
+                    except Exception:
+                        error = f"HTTP {response.status_code}"
                     self._log(f"Heartbeat failed: {error}")
                     # Invalid token — clear saved state, reset server, stop thread
-                    if "token" in error.lower() or "invalid" in error.lower():
+                    if "token" in str(error).lower() or "invalid" in str(error).lower():
                         node_info_file = CONFIG_DIR / "node_info.json"
                         if node_info_file.exists():
                             node_info_file.unlink()
