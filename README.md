@@ -1,403 +1,168 @@
-# Nexora - Distributed Node Network
+# Nexora Node
 
-A lightweight, cross-platform CLI-based distributed node network system.
+**Earn NEXORA tokens by running a lightweight node that helps secure the Base network.**
 
-## Features
+No GPU. No heavy computation. Just run the CLI and earn passively.
 
-- **Lightweight**: No heavy computation, only heartbeat tracking
-- **Cross-platform**: Works on Linux, VPS, Windows Terminal, Android (Termux)
-- **CLI-based**: Everything runs via command line
-- **Referral System**: Users register with referral codes
-- **Reward System**: Earn points based on node uptime
-- **Anti-cheat**: Max 2 nodes per device, uptime validation
+[![Backend](https://img.shields.io/badge/Backend-Railway-blueviolet)](https://node-production-712b.up.railway.app)
+[![Dashboard](https://img.shields.io/badge/Dashboard-Vercel-black)](https://node-delta-ten.vercel.app)
+[![Token](https://img.shields.io/badge/Token-Base%20Mainnet-blue)](https://basescan.org/token/0xE0a4a9d3263ee93E167196954Ea4684418911E24)
+[![Contract](https://img.shields.io/badge/ClaimDistributor-Verified-green)](https://basescan.org/address/0xaeD12935DA40EFf65d919CCc4b77Df185f4A2cf0#code)
 
-## Architecture
+---
 
-```
-nexora/
-├── backend/                    # FastAPI backend server
-│   ├── main.py                # FastAPI application
-│   ├── database.py            # SQLAlchemy database setup
-│   ├── models.py              # User, Device, Node models
-│   ├── schemas.py             # Pydantic schemas
-│   ├── routes/                # API routes
-│   │   ├── user_routes.py     # User endpoints
-│   │   ├── node_routes.py     # Node endpoints
-│   │   └── points_routes.py   # Points endpoints
-│   └── services/              # Business logic
-│       ├── user_service.py    # User operations
-│       ├── node_service.py    # Node operations
-│       └── points_service.py  # Points operations
-├── cli/
-│   └── main.py                # CLI application
-├── requirements.txt           # Python dependencies
-└── seed_database.py           # Create seed user
-```
+## What is Nexora?
+
+Nexora is a distributed node network where users run lightweight CLI nodes and earn **NEXORA (NEXOR)** tokens based on uptime. Optionally, running a local Base/ETH/OP/BNB full node earns up to **5× bonus rewards**.
+
+- **Token:** NEXORA (NEXOR) on Base Mainnet
+- **Supply:** 240,000 NEXOR total (200,000 for mining, 40,000 reserved)
+- **Model:** Smooth 5% decay every 24 days — rewards last ~100 years
+- **Claim:** On-chain via ClaimDistributor contract (user pays gas)
+
+---
 
 ## Quick Start
 
-### 1. Install Dependencies
+### Requirements
+- Python 3.8+
+- A referral code (get one from the community)
+
+### Install
 
 ```bash
+git clone https://github.com/Nexora-Node/Node
+cd Node
 pip install -r requirements.txt
 ```
 
-### 2. Seed Database (First Time Only)
+### Register
 
 ```bash
-python seed_database.py
+cd cli
+python main.py register --ref YOUR_REFERRAL_CODE
 ```
 
-This creates a seed user with referral code `NEXORA001`.
-
-### 3. Start Backend Server
+### Start Mining
 
 ```bash
-cd backend
-python main.py
+python main.py start
 ```
 
-The server will start on `http://localhost:8000`
+The live dashboard opens automatically. Press **Ctrl+C** to stop.
 
-### 4. Use CLI Commands
-
-```bash
-# Register with a referral code
-python cli/main.py register --ref NEXORA001
-
-# Start node in background
-python cli/main.py start
-
-# Check status
-python cli/main.py status
-
-# Stop node
-python cli/main.py stop
-```
+---
 
 ## CLI Commands
 
-### `python cli/main.py register --ref CODE`
+| Command | Description |
+|---|---|
+| `python main.py register --ref CODE` | Register with a referral code |
+| `python main.py start` | Start node + open live dashboard |
+| `python main.py stop` | Stop running node |
+| `python main.py status` | Show NEXORA balance and node status |
+| `python main.py dashboard` | Open dashboard without starting node |
+| `python main.py wallet 0x...` | Link EVM wallet for claiming |
+| `python main.py claim` | Instructions to claim on web |
 
-Register a new user with a referral code.
+---
 
-**Example:**
-```bash
-python cli/main.py register --ref NEXORA001
+## Live Dashboard
+
+When you run `python main.py start`, a live terminal dashboard opens:
+
+```
+====================================================================================================
+                         NEXORA NODE DASHBOARD
+====================================================================================================
+  User: YourUsername   Node: [RUNNING]   2026-04-01 00:00:00
+  Referral: ABCD1234  (share to invite others)
+
+  NEXORA BALANCE
+  Available   : 12.345678 NEXORA
+  Total Earned: 12.345678 NEXORA   Claimed: 0.000000 NEXORA
+
+  MINING INFO
+  Rate: 0.289352 NEXORA/min  Epoch #0  Decay in 23.8d
+  Supply: [##..................] 16/200000
+
+  NODES (1 active)
+  [ON] a1b2c3d4e5f6...  uptime 2h 15m  score 100/100
+
+  LIVE LOG  (last 8 lines)
+  [00:00:30] Node active — verifying Base network | uptime 0m | score 100/100
+  [00:01:00] Node active — verifying Base network | uptime 1m | score 100/100
 ```
 
-**What it does:**
-- Prompts for username
-- Generates unique device ID (OS + hostname + MAC address)
-- Registers user with backend
-- Registers device with backend
-- Saves configuration to `~/.nexora/config.json`
+---
 
-### `python cli/main.py start`
+## Claiming NEXORA
 
-Start node in background mode.
+1. Open [node-delta-ten.vercel.app](https://node-delta-ten.vercel.app)
+2. Enter your username
+3. Connect MetaMask and link your wallet
+4. Click **Claim NEXORA**
+5. Confirm the transaction (gas on Base, ~$0.01)
 
-**Example:**
-```bash
-python cli/main.py start
+NEXORA transfers directly to your wallet. 0.05% fee goes to the DEX listing fund.
+
+---
+
+## Reward Formula
+
+```
+rate    = 0.289352 × 0.95^epoch   (NEXORA/min, decays 5% every 24 days)
+earned  = (uptime_delta / 60) × rate × (node_score / 100)
 ```
 
-**What it does:**
-- Registers node with backend
-- Starts background thread
-- Sends heartbeat every 30 seconds
-- Tracks uptime
-- Saves PID to `~/.nexora/node.pid`
+| Epoch | Days | Rate | Period Emission |
+|---|---|---|---|
+| 0 | 0–23 | 0.2894 NEXORA/min | 10,000 NEXORA |
+| 1 | 24–47 | 0.2749 NEXORA/min | 9,500 NEXORA |
+| 2 | 48–71 | 0.2611 NEXORA/min | 9,025 NEXORA |
+| ... | ... | ... | ... |
 
-### `python cli/main.py stop`
+Total converges to exactly **200,000 NEXORA** over ~100 years.
 
-Stop running node.
+---
 
-**Example:**
-```bash
-python cli/main.py stop
-```
+## Token
 
-**What it does:**
-- Reads PID from `~/.nexora/node.pid`
-- Kills the process
-- Cleans up PID file
+| Property | Value |
+|---|---|
+| Name | NEXORA NODE |
+| Symbol | NEXOR |
+| Network | Base Mainnet |
+| Contract | [`0xE0a4a9d3...`](https://basescan.org/token/0xE0a4a9d3263ee93E167196954Ea4684418911E24) |
+| Distributor | [`0xaeD12935...`](https://basescan.org/address/0xaeD12935DA40EFf65d919CCc4b77Df185f4A2cf0#code) |
+| Total Supply | 240,000 NEXOR |
+| Decimals | 18 |
 
-### `python cli/main.py status`
+---
 
-Show node and reward status.
+## Platform Support
 
-**Example:**
-```bash
-python cli/main.py status
-```
+| Platform | Supported |
+|---|---|
+| Windows | ✅ |
+| Linux / VPS | ✅ |
+| macOS | ✅ |
+| Android (Termux) | ✅ |
+| Raspberry Pi | ✅ |
 
-**Output:**
-- Username and device ID
-- Referral code
-- Node status (RUNNING/STOPPED)
-- Points information
+---
 
-## API Endpoints
+## Documentation
 
-### POST /user/register
+Full docs at [github.com/Nexora-Node/Docs](https://github.com/Nexora-Node/Docs)
 
-Register a new user.
+- [Introduction](https://github.com/Nexora-Node/Docs/blob/master/introduction.md)
+- [How It Works](https://github.com/Nexora-Node/Docs/blob/master/how-it-works.md)
+- [Reward System](https://github.com/Nexora-Node/Docs/blob/master/rewards.md)
+- [Roadmap](https://github.com/Nexora-Node/Docs/blob/master/roadmap.md)
 
-**Request:**
-```json
-{
-  "username": "john",
-  "referral_code": "NEXORA001"
-}
-```
-
-**Response:**
-```json
-{
-  "id": 1,
-  "username": "john",
-  "referral_code": "XYZ67890",
-  "invited_by": "NEXORA001",
-  "points": 0.0,
-  "total_earned": 0.0,
-  "created_at": "2024-01-01T00:00:00"
-}
-```
-
-### POST /node/register
-
-Register a new node.
-
-**Request:**
-```json
-{
-  "device_id": "abc123def456",
-  "system": "Linux-5.15.0-x86_64",
-  "hostname": "myserver"
-}
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "message": "Node registered successfully",
-  "node_id": "node789xyz"
-}
-```
-
-### POST /node/heartbeat
-
-Send heartbeat from node.
-
-**Request:**
-```json
-{
-  "node_id": "node789xyz",
-  "device_id": "abc123def456",
-  "uptime": 3600.5
-}
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "message": "Heartbeat received"
-}
-```
-
-### GET /node/status/{device_id}
-
-Get status of all nodes on a device.
-
-**Response:**
-```json
-[
-  {
-    "node_id": "node789xyz",
-    "device_id": "abc123def456",
-    "uptime": 3600.5,
-    "last_seen": "2024-01-01T01:00:00",
-    "status": "active"
-  }
-]
-```
-
-### GET /points/{username}
-
-Get points information.
-
-**Response:**
-```json
-{
-  "username": "john",
-  "points": 50.5,
-  "total_earned": 150.5
-}
-```
-
-### POST /points/claim
-
-Claim available points.
-
-**Request:**
-```json
-{
-  "username": "john"
-}
-```
-
-**Response:**
-```json
-{
-  "success": true,
-  "message": "Successfully claimed 50.50 points",
-  "points_claimed": 50.5
-}
-```
-
-## Database Schema
-
-### Users Table
-
-| Column | Type | Description |
-|--------|------|-------------|
-| id | Integer | Primary key |
-| username | String(50) | Unique username |
-| referral_code | String(20) | Unique referral code |
-| invited_by | String(20) | Referral code of inviter |
-| points | Float | Current claimable points |
-| total_earned | Float | Total points earned |
-| created_at | DateTime | Registration timestamp |
-
-### Devices Table
-
-| Column | Type | Description |
-|--------|------|-------------|
-| id | Integer | Primary key |
-| device_id | String(64) | Unique device ID |
-| user_id | Integer | Foreign key to users |
-| created_at | DateTime | Registration timestamp |
-
-### Nodes Table
-
-| Column | Type | Description |
-|--------|------|-------------|
-| id | Integer | Primary key |
-| node_id | String(64) | Unique node ID |
-| device_id | String(64) | Foreign key to devices |
-| uptime | Float | Total uptime in seconds |
-| last_seen | DateTime | Last heartbeat timestamp |
-| status | String(20) | Node status (active/stopped) |
-| created_at | DateTime | Start timestamp |
-
-## Rules
-
-1. **Referral Required**: Users must provide a valid referral code to register
-2. **Max 2 Nodes**: Each device can run maximum 2 nodes
-3. **Uptime Tracking**: Node uptime is tracked via heartbeats
-4. **Reward Formula**: 1 point per minute of uptime (uptime_seconds / 60)
-5. **Lightweight**: No mining or heavy computation
-6. **Anti-cheat**: 
-   - Max 2 nodes per device
-   - Validate uptime (no jumps)
-   - Reject heartbeat spam (min 20 seconds between heartbeats)
-
-## Configuration
-
-Configuration is stored in `~/.nexora/config.json`:
-
-```json
-{
-  "username": "john",
-  "device_id": "abc123def456",
-  "referral_code": "XYZ67890",
-  "api_url": "http://localhost:8000",
-  "registered_at": "2024-01-01T00:00:00"
-}
-```
-
-## Cross-Platform Support
-
-### Linux
-```bash
-python3 cli/main.py register --ref CODE
-```
-
-### Windows Terminal
-```bash
-python cli/main.py register --ref CODE
-```
-
-### Android (Termux)
-```bash
-pkg install python
-pip install -r requirements.txt
-python seed_database.py
-cd backend
-python main.py &
-cd ..
-python cli/main.py register --ref NEXORA001
-python cli/main.py start
-```
-
-### VPS
-```bash
-# Install Python 3.8+
-sudo apt update
-sudo apt install python3 python3-pip
-
-# Setup
-pip3 install -r requirements.txt
-python3 seed_database.py
-
-# Start backend (use screen or tmux for persistence)
-screen -S nexora-backend
-python3 backend/main.py
-
-# In another screen
-screen -S nexora-cli
-python3 cli/main.py register --ref NEXORA001
-python3 cli/main.py start
-```
-
-## API Documentation
-
-Once the backend is running, visit:
-- Swagger UI: `http://localhost:8000/docs`
-- ReDoc: `http://localhost:8000/redoc`
-
-## Troubleshooting
-
-### "Cannot connect to server"
-
-Make sure the backend is running:
-```bash
-cd backend
-python main.py
-```
-
-### "Node is already running"
-
-Stop the existing node:
-```bash
-python cli/main.py stop
-```
-
-### "Invalid referral code"
-
-Use the seed referral code: `NEXORA001`
-
-### "Maximum 2 nodes per device allowed"
-
-Each device can only run 2 nodes. Stop an existing node before starting a new one.
-
-### "Heartbeat spam detected"
-
-Heartbeats must be at least 20 seconds apart. The CLI sends heartbeats every 30 seconds by default.
+---
 
 ## License
 
-MIT License
+MIT
