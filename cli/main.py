@@ -511,8 +511,12 @@ class NexoraCLI:
 
                 if response.status_code == 200:
                     data = response.json()
-                    earned = data.get('tokens_earned', 0)
-                    self._log(f"Heartbeat OK — +{earned:.8f} NEXORA (uptime: {uptime:.0f}s)")
+                    score = data.get('node_score', 100)
+                    mins = int(uptime // 60)
+                    hrs  = mins // 60
+                    mins = mins % 60
+                    uptime_str = f"{hrs}h {mins}m" if hrs > 0 else f"{mins}m"
+                    self._log(f"Node active — verifying Base network | uptime {uptime_str} | score {score}/100")
                 else:
                     try:
                         error = response.json().get("detail", "Unknown error")
