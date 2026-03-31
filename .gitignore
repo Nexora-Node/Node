@@ -64,3 +64,6 @@ contracts/artifacts/
 contracts/cache/
 contracts/.env
 contracts/typechain-types/
+
+# Private scripts — do not push
+scripts/
