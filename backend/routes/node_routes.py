@@ -89,6 +89,28 @@ def stop_node_endpoint(
         raise HTTPException(status_code=status.HTTP_400_BAD_REQUEST, detail=str(e))
 
 
+@router.post("/reset-device/{device_id}", response_model=StatusResponse)
+def reset_device_nodes(device_id: str, db: Session = Depends(get_db)):
+    """
+    Force-stop all nodes for a device and reset their status.
+    Used when local token is lost and user needs to re-register.
+    """
+    from models import Node
+    from services.anti_cheat_service import decrement_ip_tracker
+    nodes = db.query(Node).filter(Node.device_id == device_id).all()
+    count = 0
+    for node in nodes:
+        if node.status in ("active", "stopped"):
+            node.status = "stopped"
+            try:
+                decrement_ip_tracker(db, node.ip_address or "")
+            except Exception:
+                pass
+            count += 1
+    db.commit()
+    return StatusResponse(success=True, message=f"Reset {count} nodes for device.")
+
+
 @router.get("/status/{device_id}", response_model=list[NodeStatus])
 def get_node_status_endpoint(device_id: str, db: Session = Depends(get_db)):
     return get_node_status(db, device_id)

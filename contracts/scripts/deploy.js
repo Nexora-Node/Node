@@ -4,13 +4,20 @@ require("dotenv").config();
 const TOKEN_ADDRESS   = "0xE0a4a9d3263ee93E167196954Ea4684418911E24";
 const TREASURY        = process.env.TREASURY_ADDRESS;
 const FEE_WALLET      = process.env.FEE_WALLET_ADDRESS;
-const SIGNER          = process.env.SIGNER_ADDRESS;   // backend hot wallet
 const OWNER           = process.env.OWNER_ADDRESS;
 
+// Derive signer address from private key
+const { ethers } = require("hardhat");
+const SIGNER_PK = process.env.SIGNER_PRIVATE_KEY;
+
 async function main() {
-  if (!TREASURY || !FEE_WALLET || !SIGNER || !OWNER) {
-    throw new Error("Set TREASURY_ADDRESS, FEE_WALLET_ADDRESS, SIGNER_ADDRESS, OWNER_ADDRESS in .env");
+  if (!TREASURY || !FEE_WALLET || !SIGNER_PK || !OWNER) {
+    throw new Error("Set TREASURY_ADDRESS, FEE_WALLET_ADDRESS, SIGNER_PRIVATE_KEY, OWNER_ADDRESS in .env");
   }
+
+  // Derive signer wallet address from private key
+  const signerWallet = new ethers.Wallet(SIGNER_PK.startsWith("0x") ? SIGNER_PK : "0x" + SIGNER_PK);
+  const SIGNER = signerWallet.address;
 
   console.log("Deploying ClaimDistributor...");
   console.log("  Token:     ", TOKEN_ADDRESS);

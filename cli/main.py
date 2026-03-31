@@ -295,11 +295,6 @@ class NexoraCLI:
     def start_node(self, daemon: bool = False):
         """Start node — runs in foreground with live dashboard. Ctrl+C to stop."""
 
-        # Fix Windows Unicode encoding
-        if platform.system() == "Windows":
-            import io
-            sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
-
         OK  = "[OK]"
         ERR = "[ERR]"
         INF = "[..]"
@@ -388,18 +383,28 @@ class NexoraCLI:
                             )
                             if existing.ok:
                                 nodes = existing.json()
-                                # Pick first active node
                                 active = [n for n in nodes if n.get("status") == "active"]
                                 pick = active[0] if active else (nodes[0] if nodes else None)
                                 if pick:
                                     node_id = pick["node_id"]
-                                    # node_token not returned by status — load from config
                                     node_token = self.config.get("node_token")
                                     if not node_token:
-                                        print(f"{ERR} Cannot resume: node_token not found locally.")
-                                        print(f"  Run 'python main.py stop' then try again.")
-                                        return
-                                    print(f"{OK} Resuming node: {node_id[:16]}...")
+                                        # No token saved — must stop all nodes and re-register
+                                        print(f"{ERR} No saved token. Stopping old nodes...")
+                                        for n in nodes:
+                                            try:
+                                                requests.post(f"{self.api_url}/node/stop", json={
+                                                    "node_id": n["node_id"],
+                                                    "node_token": "",
+                                                    "device_id": device_id,
+                                                }, timeout=5)
+                                            except Exception:
+                                                pass
+                                        # Force re-register by clearing node_id
+                                        node_id = None
+                                        node_token = None
+                                    else:
+                                        print(f"{OK} Resuming node: {node_id[:16]}...")
                                 else:
                                     print(f"{ERR} {detail}")
                                     return
@@ -419,6 +424,33 @@ class NexoraCLI:
                 print(f"{ERR} {e}")
                 return
 
+        # If resume cleared node_id (no saved token), try register fresh
+        if not node_id:
+            print(f"{INF} Registering fresh node...")
+            nonce = self.generate_proof_of_work(device_id)
+            try:
+                r = requests.post(
+                    f"{self.api_url}/node/register",
+                    json={
+                        "device_id": device_id,
+                        "system": f"{platform.system()}-{platform.release()}",
+                        "hostname": socket.gethostname(),
+                        "nonce": nonce,
+                    },
+                    timeout=10,
+                )
+                if r.status_code == 200:
+                    res = r.json()
+                    node_id    = res["node_id"]
+                    node_token = res["node_token"]
+                    print(f"{OK} Node registered!")
+                else:
+                    print(f"{ERR} {r.json().get('detail', 'Registration failed')}")
+                    return
+            except Exception as e:
+                print(f"{ERR} {e}")
+                return
+
         # Save node info & PID
         node_info_file.write_text(json.dumps({
             "node_id": node_id, "node_token": node_token,
@@ -427,6 +459,13 @@ class NexoraCLI:
         self.config["node_token"] = node_token
         self.save_config(self.config)
         PID_FILE.write_text(str(os.getpid()))
+
+        # Clear old log
+        log_file = CONFIG_DIR / "node.log"
+        try:
+            log_file.write_text("", encoding="utf-8")
+        except Exception:
+            pass
 
         # Start heartbeat thread
         stop_event = threading.Event()
@@ -450,6 +489,9 @@ class NexoraCLI:
         print(f"{OK} Node started — opening dashboard (Ctrl+C to stop node)")
         time.sleep(1)
 
+        # Pass stop_event to dashboard so it exits when node stops
+        self._stop_event = stop_event
+
         # Open dashboard — Ctrl+C here stops the node
         try:
             self.dashboard()
@@ -465,10 +507,23 @@ class NexoraCLI:
                 }, timeout=5)
             except Exception:
                 pass
+            # Clean up local state
             if PID_FILE.exists():
                 PID_FILE.unlink()
-            print("Node stopped.")
+            node_info_f = CONFIG_DIR / "node_info.json"
+            if node_info_f.exists():
+                node_info_f.unlink()
+            print("Node stopped. Run 'python main.py start' to restart.")
     
+    def _log(self, msg: str):
+        """Write log entry to node.log file (safe from any thread)."""
+        log_file = CONFIG_DIR / "node.log"
+        try:
+            with open(log_file, "a", encoding="utf-8") as f:
+                f.write(f"[{datetime.now().strftime('%H:%M:%S')}] {msg}\n")
+        except Exception:
+            pass
+
     def _node_loop(self, node_id: str, node_token: str, device_id: str, stop_event: threading.Event):
         """Background node loop - sends heartbeats with jitter to avoid perfect-timing detection."""
         import random
@@ -494,15 +549,69 @@ class NexoraCLI:
                 if response.status_code == 200:
                     data = response.json()
                     earned = data.get('tokens_earned', 0)
-                    print(f"[{datetime.now().strftime('%H:%M:%S')}] Heartbeat OK — +{earned:.6f} NEXORA (uptime: {uptime:.0f}s)")
+                    self._log(f"Heartbeat OK — +{earned:.6f} NEXORA (uptime: {uptime:.0f}s)")
                 else:
                     error = response.json().get("detail", "Unknown error")
-                    print(f"[{datetime.now().strftime('%H:%M:%S')}] Heartbeat failed: {error}")
+                    self._log(f"Heartbeat failed: {error}")
+                    # Invalid token — reset device and re-register automatically
+                    if "token" in error.lower() or "invalid" in error.lower():
+                        node_info_file = CONFIG_DIR / "node_info.json"
+                        if node_info_file.exists():
+                            node_info_file.unlink()
+                        self._log("Token invalid — resetting device and re-registering...")
+                        try:
+                            requests.post(
+                                f"{self.api_url}/node/reset-device/{device_id}",
+                                timeout=5,
+                            )
+                        except Exception:
+                            pass
+                        # Re-register new node
+                        try:
+                            import hashlib as _hl, secrets as _sec
+                            _salt = _sec.token_hex(8)
+                            _ts   = str(int(time.time()))
+                            _nonce_val = None
+                            for i in range(100000):
+                                candidate = f"{device_id}:{_ts}:{i}"
+                                h = _hl.sha256(candidate.encode()).hexdigest()
+                                if h.startswith("0000"):
+                                    _nonce_val = str(i)
+                                    break
+                            if _nonce_val:
+                                r = requests.post(
+                                    f"{self.api_url}/node/register",
+                                    json={
+                                        "device_id": device_id,
+                                        "system": f"{platform.system()}-{platform.release()}",
+                                        "hostname": socket.gethostname(),
+                                        "nonce": _nonce_val,
+                                    },
+                                    timeout=10,
+                                )
+                                if r.status_code == 200:
+                                    res = r.json()
+                                    node_id    = res["node_id"]
+                                    node_token = res["node_token"]
+                                    # Save new node info
+                                    _nif = CONFIG_DIR / "node_info.json"
+                                    _nif.write_text(json.dumps({
+                                        "node_id": node_id, "node_token": node_token,
+                                        "device_id": device_id,
+                                        "started_at": datetime.utcnow().isoformat(),
+                                    }, indent=2))
+                                    self._log(f"Re-registered new node: {node_id[:16]}...")
+                                    start_time = time.time()
+                                    continue
+                        except Exception as ex:
+                            self._log(f"Re-register failed: {ex}")
+                        stop_event.set()
+                        break
 
             except requests.exceptions.ConnectionError:
-                print(f"[{datetime.now().strftime('%H:%M:%S')}] Connection error - retrying...")
+                self._log("Connection error - retrying...")
             except Exception as e:
-                print(f"[{datetime.now().strftime('%H:%M:%S')}] Error: {str(e)}")
+                self._log(f"Error: {str(e)}")
 
             # Sleep with jitter — prevents perfect-timing detection on the server
             interval = BASE_INTERVAL + random.uniform(-JITTER, JITTER)
@@ -574,14 +683,13 @@ class NexoraCLI:
                     )
                     if hb.status_code == 200:
                         data = hb.json()
-                        print(f"[{datetime.now().strftime('%H:%M:%S')}] "
-                              f"[Chain:{cn['chain_name']}] "
+                        self._log(f"[Chain:{cn['chain_name']}] "
                               f"block={local_block:,} lag={data.get('sync_lag', '?')} "
                               f"+{data.get('bonus_tokens', data.get('bonus_points', 0)):.6f} NEXORA")
                     else:
-                        print(f"[Chain:{cn['chain_name']}] {hb.json().get('detail', 'error')}")
+                        self._log(f"[Chain:{cn['chain_name']}] {hb.json().get('detail', 'error')}")
                 except Exception as e:
-                    print(f"[Chain:{cn['chain_name']}] Error: {str(e)}")
+                    self._log(f"[Chain:{cn['chain_name']}] Error: {str(e)}")
 
             # Sleep 60s with jitter
             interval = 60 + random.uniform(-5, 5)
@@ -676,8 +784,18 @@ class NexoraCLI:
             print(f"✗ Error: {str(e)}")
 
     def dashboard(self):
-        """Live terminal dashboard — refreshes every 5 seconds. Press Ctrl+C to exit."""
+        """Live terminal dashboard — universal, works on all terminals."""
         import shutil
+
+        # Enable ANSI on Windows 10+
+        if platform.system() == "Windows":
+            try:
+                import ctypes
+                ctypes.windll.kernel32.SetConsoleMode(
+                    ctypes.windll.kernel32.GetStdHandle(-11), 7
+                )
+            except Exception:
+                pass
 
         CYAN   = "\033[96m"
         GREEN  = "\033[92m"
@@ -688,10 +806,11 @@ class NexoraCLI:
         RESET  = "\033[0m"
         BOLD   = "\033[1m"
 
-        def color_status(s):
-            if s == "active":  return f"{GREEN}[ON]{RESET}"
-            if s == "stopped": return f"{DIM}[--]{RESET}"
-            return f"{RED}[!!]{RESET}"
+        def clear_screen():
+            if platform.system() == "Windows":
+                os.system("cls")
+            else:
+                os.system("clear")
 
         def fmt_uptime(sec):
             sec = int(sec)
@@ -702,70 +821,71 @@ class NexoraCLI:
             if h: return f"{h}h {m}m {s}s"
             return f"{m}m {s}s"
 
-        def clear():
-            os.system("cls" if platform.system() == "Windows" else "clear")
+        def status_tag(s):
+            if s == "active":  return f"{GREEN}[ON] {RESET}"
+            if s == "stopped": return f"{DIM}[--] {RESET}"
+            return f"{RED}[!!] {RESET}"
 
         username = self.config.get("username", "?")
+        # stop_event passed from start_node so dashboard exits when node stops
+        _stop = getattr(self, '_stop_event', None)
 
         while True:
             try:
-                tokens_data, mining_data, nodes_data = None, None, []
+                tokens_data = mining_data = None
+                nodes_data = []
                 try:
-                    r = requests.get(f"{self.api_url}/tokens/{username}", timeout=5)
+                    r = requests.get(f"{self.api_url}/tokens/{username}", timeout=4)
                     if r.ok: tokens_data = r.json()
                 except Exception: pass
                 try:
-                    r = requests.get(f"{self.api_url}/mining/info", timeout=5)
+                    r = requests.get(f"{self.api_url}/mining/info", timeout=4)
                     if r.ok: mining_data = r.json()
                 except Exception: pass
                 try:
-                    r = requests.get(f"{self.api_url}/node/user/{username}", timeout=5)
+                    r = requests.get(f"{self.api_url}/node/user/{username}", timeout=4)
                     if r.ok: nodes_data = r.json()
                 except Exception: pass
 
-                node_running  = PID_FILE.exists()
-                node_log_file = CONFIG_DIR / "node.log"
-
-                # Read last 8 log lines only
                 logs = []
-                if node_log_file.exists():
+                log_file = CONFIG_DIR / "node.log"
+                if log_file.exists():
                     try:
-                        lines = node_log_file.read_text(errors="ignore").splitlines()
+                        lines = log_file.read_text(encoding="utf-8", errors="replace").splitlines()
                         logs = [l for l in lines if l.strip()][-8:]
-                    except Exception:
-                        pass
+                    except Exception: pass
 
-                W = min(shutil.get_terminal_size((80, 24)).columns, 100)
-                SEP = f"{DIM}{'─'*W}{RESET}"
+                node_running = PID_FILE.exists()
+                W   = min(shutil.get_terminal_size((80, 24)).columns, 100)
+                SEP = f"{DIM}{'-'*W}{RESET}"
 
-                clear()  # wipe entire terminal before redraw
+                clear_screen()
 
-                # ── Header ──────────────────────────────────────────────────
+                # Header
                 title = "  NEXORA NODE DASHBOARD  "
-                pad = max((W - len(title)) // 2, 0)
+                pad   = max((W - len(title)) // 2, 0)
                 print(f"{BOLD}{CYAN}{'='*W}{RESET}")
                 print(f"{BOLD}{CYAN}{' '*pad}{title}{RESET}")
                 print(f"{BOLD}{CYAN}{'='*W}{RESET}")
 
                 now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                node_str = f"{GREEN}[RUNNING]{RESET}" if node_running else f"{RED}[STOPPED]{RESET}"
+                ns  = f"{GREEN}[RUNNING]{RESET}" if node_running else f"{RED}[STOPPED]{RESET}"
                 print(f"  {DIM}User:{RESET} {WHITE}{username}{RESET}   "
-                      f"{DIM}Node:{RESET} {node_str}   "
-                      f"{DIM}{now}{RESET}\n")
+                      f"{DIM}Node:{RESET} {ns}   {DIM}{now}{RESET}\n")
 
-                # ── Balance ──────────────────────────────────────────────────
+                # Balance
                 print(f"  {BOLD}NEXORA BALANCE{RESET}")
                 if tokens_data:
                     avail   = tokens_data.get("tokens", 0)
                     earned  = tokens_data.get("total_earned", 0)
                     claimed = tokens_data.get("claimed_tokens", 0)
-                    print(f"  {YELLOW}Available  :{RESET} {WHITE}{avail:.6f} NEXORA{RESET}")
+                    print(f"  {YELLOW}Available   :{RESET} {WHITE}{avail:.6f} NEXORA{RESET}")
                     print(f"  {DIM}Total Earned:{RESET} {earned:.6f} NEXORA   "
                           f"{DIM}Claimed:{RESET} {claimed:.6f} NEXORA")
                 else:
-                    print(f"  {DIM}Unable to fetch — backend may be starting...{RESET}")
+                    print(f"  {DIM}Connecting to server...{RESET}")
 
-                # ── Mining ───────────────────────────────────────────────────
+                # Mining
                 print(f"\n  {BOLD}MINING INFO{RESET}")
                 if mining_data:
                     rate   = mining_data.get("current_rate_per_min", 0)
@@ -774,33 +894,32 @@ class NexoraCLI:
                     remain = mining_data.get("remaining_supply", 0)
                     cap    = mining_data.get("mining_supply_cap", 200000)
                     pct    = (cap - remain) / cap if cap else 0
-                    filled = int(pct * 24)
-                    bar    = f"{GREEN}{'#'*filled}{DIM}{'.'*(24-filled)}{RESET}"
+                    filled = int(pct * 20)
+                    bar    = f"{GREEN}{'#'*filled}{DIM}{'.'*(20-filled)}{RESET}"
                     print(f"  {DIM}Rate:{RESET} {CYAN}{rate:.6f} NEXORA/min{RESET}  "
                           f"{DIM}Epoch #{epoch}{RESET}  "
-                          f"{YELLOW}Next decay in {decay:.1f}d{RESET}")
-                    print(f"  {DIM}Supply:[{RESET}{bar}{DIM}] "
-                          f"{cap-remain:.0f}/{cap:.0f} distributed{RESET}")
+                          f"{YELLOW}Decay in {decay:.1f}d{RESET}")
+                    print(f"  {DIM}Supply: [{RESET}{bar}{DIM}] "
+                          f"{cap-remain:.0f}/{cap:.0f}{RESET}")
                 else:
-                    print(f"  {DIM}Unable to fetch mining info{RESET}")
+                    print(f"  {DIM}Connecting...{RESET}")
 
-                # ── Nodes ────────────────────────────────────────────────────
+                # Nodes
                 print(f"\n  {BOLD}NODES ({len(nodes_data)}){RESET}")
                 if nodes_data:
                     for n in nodes_data:
                         nid    = n.get("node_id", "")[:16]
-                        status = n.get("status", "?")
                         score  = n.get("node_score", 0)
                         uptime = fmt_uptime(n.get("uptime", 0))
                         sc     = GREEN if score >= 80 else YELLOW if score >= 50 else RED
-                        print(f"  {color_status(status)}  "
+                        print(f"  {status_tag(n.get('status','?'))}"
                               f"{DIM}{nid}...{RESET}  "
                               f"uptime {WHITE}{uptime}{RESET}  "
                               f"score {sc}{score}/100{RESET}")
                 else:
                     print(f"  {DIM}No nodes found{RESET}")
 
-                # ── Live Log (last 8 lines, fixed height) ────────────────────
+                # Live log — fixed 8 lines height
                 print(f"\n{SEP}")
                 print(f"  {BOLD}LIVE LOG{RESET}  {DIM}(last 8 lines){RESET}")
                 print(SEP)
@@ -809,25 +928,26 @@ class NexoraCLI:
                         print(f"  {GREEN}{line}{RESET}")
                     elif any(w in line.lower() for w in ["error", "failed", "suspend"]):
                         print(f"  {RED}{line}{RESET}")
-                    elif "Heartbeat" in line:
+                    elif "heartbeat" in line.lower():
                         print(f"  {CYAN}{line}{RESET}")
                     else:
                         print(f"  {DIM}{line}{RESET}")
-                # Pad to always show 8 lines so layout doesn't jump
                 for _ in range(8 - len(logs)):
                     print()
 
                 print(SEP)
-                print(f"  {DIM}Auto-refresh every 5s  ·  Ctrl+C to exit{RESET}")
+                print(f"  {DIM}Refresh every 5s  |  Ctrl+C to exit{RESET}")
+                sys.stdout.flush()
 
                 time.sleep(5)
 
             except KeyboardInterrupt:
-                clear()
-                print(f"\n  {DIM}Dashboard closed.{RESET}\n")
-                break
+                clear_screen()
+                print("\n  Dashboard closed.\n")
+                return  # return instead of break so KeyboardInterrupt propagates up
             except Exception:
                 time.sleep(5)
+
 
     def claim(self):
         """Claim available NEXORA"""

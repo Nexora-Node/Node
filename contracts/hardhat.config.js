@@ -5,7 +5,16 @@ require("dotenv").config();
 module.exports = {
   solidity: {
     version: "0.8.25",
-    settings: { optimizer: { enabled: true, runs: 200 } },
+    settings: {
+      optimizer: { enabled: true, runs: 200 },
+      evmVersion: "cancun",
+    },
+  },
+  paths: {
+    sources: "./src",
+    tests: "./test",
+    cache: "./cache",
+    artifacts: "./artifacts",
   },
   networks: {
     base: {
