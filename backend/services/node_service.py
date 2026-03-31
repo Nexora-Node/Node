@@ -243,7 +243,6 @@ def process_heartbeat(
     raw_tokens = (uptime_delta / 60.0) * rate
     multiplier = reward_multiplier(node.node_score)
     adjusted_tokens = raw_tokens * multiplier
-    print(f"DEBUG heartbeat: uptime={uptime} node.uptime={node.uptime} delta={uptime_delta:.2f} rate={rate:.6f} mult={multiplier:.2f} adj={adjusted_tokens:.8f}")
 
     # Update node
     node.uptime = uptime
@@ -270,7 +269,7 @@ def process_heartbeat(
     return {
         "success": True,
         "message": "Heartbeat received.",
-        "tokens_earned": round(credited, 8),
+        "tokens_earned": round(adjusted_tokens, 8),  # return calculated amount, not credited
         "node_score": node.node_score,
     }
 
