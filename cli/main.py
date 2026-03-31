@@ -293,90 +293,54 @@ class NexoraCLI:
             print(f"✗ Error: {str(e)}")
     
     def start_node(self, daemon: bool = False):
-        """Start node - resume existing node or register new one"""
-        print(f"\n{'='*50}")
-        print("NEXORA NODE START")
-        print(f"{'='*50}\n")
+        """Start node — runs in foreground with live dashboard. Ctrl+C to stop."""
+
+        # Fix Windows Unicode encoding
+        if platform.system() == "Windows":
+            import io
+            sys.stdout = io.TextIOWrapper(sys.stdout.buffer, encoding="utf-8", errors="replace")
+
+        OK  = "[OK]"
+        ERR = "[ERR]"
+        INF = "[..]"
 
         if PID_FILE.exists():
             try:
                 pid = int(PID_FILE.read_text().strip())
                 alive = False
                 if platform.system() == "Windows":
-                    # Check via tasklist — more reliable than OpenProcess
                     result = subprocess.run(
                         ["tasklist", "/FI", f"PID eq {pid}", "/NH"],
                         capture_output=True, text=True
                     )
                     alive = str(pid) in result.stdout
                 else:
-                    try:
-                        os.kill(pid, 0)
-                        alive = True
-                    except OSError:
-                        pass
+                    try: os.kill(pid, 0); alive = True
+                    except OSError: pass
                 if alive:
-                    print("✗ Node is already running!")
-                    print(f"  Use 'python main.py stop' to stop it first.")
+                    print("Node is already running!")
+                    print("  Use 'python main.py stop' to stop it first.")
                     return
                 else:
-                    PID_FILE.unlink()  # stale PID
+                    PID_FILE.unlink()
             except Exception:
                 PID_FILE.unlink()
 
-        # Re-launch as detached background process so terminal can be closed
-        if not daemon:
-            script = os.path.abspath(__file__)
-            log_file = CONFIG_DIR / "node.log"
-            CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-            if platform.system() == "Windows":
-                with open(log_file, "w") as lf:
-                    proc = subprocess.Popen(
-                        [sys.executable, script, "start", "--daemon"],
-                        stdout=lf, stderr=lf,
-                        creationflags=subprocess.DETACHED_PROCESS | subprocess.CREATE_NEW_PROCESS_GROUP,
-                        close_fds=True,
-                    )
-            else:
-                with open(log_file, "w") as lf:
-                    proc = subprocess.Popen(
-                        [sys.executable, script, "start", "--daemon"],
-                        stdout=lf, stderr=lf,
-                        start_new_session=True,
-                        close_fds=True,
-                    )
-            # Save daemon PID immediately so next 'start' detects it
-            CONFIG_DIR.mkdir(parents=True, exist_ok=True)
-            PID_FILE.write_text(str(proc.pid))
-            print(f"✓ Node started in background (PID: {proc.pid})")
-            print(f"  Logs : {log_file}")
-            print(f"  Use 'python main.py status' to check status")
-            print(f"  Use 'python main.py stop' to stop the node")
-            print(f"\n  You can safely close this terminal.")
-            time.sleep(1)   # brief pause so daemon registers node first
-            self.dashboard()
-            return
-
         if not self.config.get("device_id"):
-            print("✗ Error: Not registered!")
-            print("  Use 'python main.py register --ref CODE' to register first.")
+            print(f"{ERR} Not registered! Use 'python main.py register --ref CODE' first.")
             return
 
         device_id = self.config["device_id"]
-
-        # Try to resume existing node first
         node_info_file = CONFIG_DIR / "node_info.json"
         node_id = None
         node_token = None
 
+        # Try resume saved node
         if node_info_file.exists():
             try:
-                with open(node_info_file, 'r') as f:
-                    saved = json.load(f)
-                node_id = saved.get("node_id")
+                saved = json.loads(node_info_file.read_text())
+                node_id    = saved.get("node_id")
                 node_token = saved.get("node_token")
-
-                # Verify node still valid on server before resuming
                 try:
                     test = requests.post(
                         f"{self.api_url}/node/heartbeat",
@@ -384,30 +348,21 @@ class NexoraCLI:
                               "device_id": device_id, "uptime": 0.0},
                         timeout=5,
                     )
-                    if test.status_code == 401 or (test.status_code == 400 and "not found" in test.text.lower()):
-                        print(f"Saved node no longer valid, registering new node...")
-                        node_id = None
-                        node_token = None
+                    if test.status_code in (401, 400):
+                        node_id = node_token = None
                         node_info_file.unlink(missing_ok=True)
-                    else:
-                        print(f"Device ID: {device_id}")
-                        print(f"Resuming node: {node_id}")
                 except Exception:
-                    # Can't verify — try to resume anyway
-                    print(f"Device ID: {device_id}")
-                    print(f"Resuming node: {node_id}")
+                    pass
             except Exception:
                 node_id = None
 
-        # If no saved node, register a new one
-        if not node_id or not node_token:
-            print(f"Device ID: {device_id}")
-            print("\nGenerating proof-of-work...")
+        # Register new node if needed
+        if not node_id:
+            print(f"{INF} Generating proof-of-work...")
             nonce = self.generate_proof_of_work(device_id)
-            print(f"Nonce: {nonce}")
-            print("\nRegistering new node...")
+            print(f"{INF} Registering node...")
             try:
-                response = requests.post(
+                r = requests.post(
                     f"{self.api_url}/node/register",
                     json={
                         "device_id": device_id,
@@ -417,85 +372,70 @@ class NexoraCLI:
                     },
                     timeout=10,
                 )
-                if response.status_code == 200:
-                    result = response.json()
-                    node_id = result["node_id"]
-                    node_token = result["node_token"]
-                    print(f"✓ Node registered!")
+                if r.status_code == 200:
+                    res = r.json()
+                    node_id    = res["node_id"]
+                    node_token = res["node_token"]
+                    print(f"{OK} Node registered!")
                 else:
-                    print(f"✗ Failed to start node: {response.json().get('detail', 'Unknown error')}")
+                    print(f"{ERR} {r.json().get('detail', 'Registration failed')}")
                     return
             except requests.exceptions.ConnectionError:
-                print("✗ Cannot connect to server.")
+                print(f"{ERR} Cannot connect to server.")
                 return
             except Exception as e:
-                print(f"✗ Error: {str(e)}")
+                print(f"{ERR} {e}")
                 return
 
-        # Save node info
-        node_info = {
-            "node_id": node_id,
-            "node_token": node_token,
-            "device_id": device_id,
-            "started_at": datetime.utcnow().isoformat(),
-        }
-        with open(node_info_file, 'w') as f:
-            json.dump(node_info, f, indent=2)
-
+        # Save node info & PID
+        node_info_file.write_text(json.dumps({
+            "node_id": node_id, "node_token": node_token,
+            "device_id": device_id, "started_at": datetime.utcnow().isoformat(),
+        }, indent=2))
         self.config["node_token"] = node_token
         self.save_config(self.config)
+        PID_FILE.write_text(str(os.getpid()))
 
-        # Start heartbeat loop
+        # Start heartbeat thread
         stop_event = threading.Event()
-        thread = threading.Thread(
+        threading.Thread(
             target=self._node_loop,
             args=(node_id, node_token, device_id, stop_event),
-            daemon=False,
-        )
-        thread.start()
+            daemon=True,
+        ).start()
 
-        # Auto-detect and register local blockchain nodes
-        print("\nScanning for local blockchain nodes...")
+        # Detect & start chain nodes
         chain_nodes = self.detect_local_chain_nodes()
         if chain_nodes:
-            for cn in chain_nodes:
-                print(f"  Found: {cn['chain_name']} on port {cn['port']} "
-                      f"(block #{cn['block_number']:,}, {cn['multiplier']}x reward)")
-            # Start chain heartbeat thread
-            chain_thread = threading.Thread(
+            threading.Thread(
                 target=self._chain_loop,
                 args=(node_id, node_token, chain_nodes, stop_event),
-                daemon=False,
-            )
-            chain_thread.start()
-
-            # Save chain info
+                daemon=True,
+            ).start()
             chain_info_file = CONFIG_DIR / "chain_info.json"
-            with open(chain_info_file, 'w') as f:
-                json.dump(chain_nodes, f, indent=2)
-        else:
-            print("  No local blockchain nodes detected.")
-            print("  Run a Base/ETH/OP node locally to earn bonus rewards!")
+            chain_info_file.write_text(json.dumps(chain_nodes, indent=2))
 
-        pid = os.getpid()
-        with open(PID_FILE, 'w') as f:
-            f.write(str(pid))
+        print(f"{OK} Node started — opening dashboard (Ctrl+C to stop node)")
+        time.sleep(1)
 
-        print(f"✓ Node started (PID: {pid})")
-        print(f"  Referral Code : {self.config.get('referral_code', 'N/A')} (share to invite others)")
-        print(f"  Use 'python main.py status' to check status")
-        print(f"  Use 'python main.py stop' to stop the node")
-
+        # Open dashboard — Ctrl+C here stops the node
         try:
-            while not stop_event.is_set():
-                time.sleep(1)
+            self.dashboard()
         except KeyboardInterrupt:
-            print("\n\nStopping node...")
+            pass
+        finally:
+            print("\nStopping node...")
             stop_event.set()
-            thread.join(timeout=5)
+            # Notify server
+            try:
+                requests.post(f"{self.api_url}/node/stop", json={
+                    "node_id": node_id, "node_token": node_token, "device_id": device_id,
+                }, timeout=5)
+            except Exception:
+                pass
             if PID_FILE.exists():
                 PID_FILE.unlink()
-            print("✓ Node stopped")
+            print("Node stopped.")
     
     def _node_loop(self, node_id: str, node_token: str, device_id: str, stop_event: threading.Event):
         """Background node loop - sends heartbeats with jitter to avoid perfect-timing detection."""
@@ -714,9 +654,9 @@ class NexoraCLI:
         BOLD   = "\033[1m"
 
         def color_status(s):
-            if s == "active":  return f"{GREEN}● active{RESET}"
-            if s == "stopped": return f"{DIM}○ stopped{RESET}"
-            return f"{RED}✕ {s}{RESET}"
+            if s == "active":  return f"{GREEN}[ON]{RESET}"
+            if s == "stopped": return f"{DIM}[--]{RESET}"
+            return f"{RED}[!!]{RESET}"
 
         def fmt_uptime(sec):
             sec = int(sec)
@@ -768,12 +708,12 @@ class NexoraCLI:
                 # ── Header ──────────────────────────────────────────────────
                 title = "  NEXORA NODE DASHBOARD  "
                 pad = max((W - len(title)) // 2, 0)
-                print(f"{BOLD}{CYAN}{'═'*W}{RESET}")
+                print(f"{BOLD}{CYAN}{'='*W}{RESET}")
                 print(f"{BOLD}{CYAN}{' '*pad}{title}{RESET}")
-                print(f"{BOLD}{CYAN}{'═'*W}{RESET}")
+                print(f"{BOLD}{CYAN}{'='*W}{RESET}")
 
                 now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                node_str = f"{GREEN}● RUNNING{RESET}" if node_running else f"{RED}○ STOPPED{RESET}"
+                node_str = f"{GREEN}[RUNNING]{RESET}" if node_running else f"{RED}[STOPPED]{RESET}"
                 print(f"  {DIM}User:{RESET} {WHITE}{username}{RESET}   "
                       f"{DIM}Node:{RESET} {node_str}   "
                       f"{DIM}{now}{RESET}\n")
@@ -798,9 +738,9 @@ class NexoraCLI:
                     decay  = mining_data.get("days_until_next_decay", 0)
                     remain = mining_data.get("remaining_supply", 0)
                     cap    = mining_data.get("mining_supply_cap", 200000)
-                    pct    = (cap - remain) / cap
+                    pct    = (cap - remain) / cap if cap else 0
                     filled = int(pct * 24)
-                    bar    = f"{GREEN}{'█'*filled}{DIM}{'░'*(24-filled)}{RESET}"
+                    bar    = f"{GREEN}{'#'*filled}{DIM}{'.'*(24-filled)}{RESET}"
                     print(f"  {DIM}Rate:{RESET} {CYAN}{rate:.6f} NEXORA/min{RESET}  "
                           f"{DIM}Epoch #{epoch}{RESET}  "
                           f"{YELLOW}Next decay in {decay:.1f}d{RESET}")
