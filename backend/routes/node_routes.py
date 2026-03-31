@@ -92,23 +92,33 @@ def stop_node_endpoint(
 @router.post("/reset-device/{device_id}", response_model=StatusResponse)
 def reset_device_nodes(device_id: str, db: Session = Depends(get_db)):
     """
-    Force-stop all nodes for a device and reset their status.
-    Used when local token is lost and user needs to re-register.
+    Force-stop all active/stopped nodes for a device.
+    Also cleans up old suspended nodes, keeping only the 2 most recent.
     """
     from models import Node
     from services.anti_cheat_service import decrement_ip_tracker
-    nodes = db.query(Node).filter(Node.device_id == device_id).all()
-    count = 0
-    for node in nodes:
+    from datetime import datetime
+
+    all_nodes = db.query(Node).filter(Node.device_id == device_id).order_by(Node.created_at.desc()).all()
+
+    # Stop active/stopped nodes
+    stopped = 0
+    for node in all_nodes:
         if node.status in ("active", "stopped"):
             node.status = "stopped"
             try:
                 decrement_ip_tracker(db, node.ip_address or "")
             except Exception:
                 pass
-            count += 1
+            stopped += 1
+
+    # Delete old suspended nodes — keep only 2 most recent
+    suspended = [n for n in all_nodes if n.status == "suspended"]
+    for node in suspended:
+        db.delete(node)
+
     db.commit()
-    return StatusResponse(success=True, message=f"Reset {count} nodes for device.")
+    return StatusResponse(success=True, message=f"Reset {stopped} nodes, removed {len(suspended)} suspended nodes.")
 
 
 @router.get("/status/{device_id}", response_model=list[NodeStatus])
