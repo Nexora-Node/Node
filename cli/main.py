@@ -484,21 +484,10 @@ class NexoraCLI:
         start_time = time.time()
         BASE_INTERVAL = 30
         JITTER = 4
-        # Fetch current uptime from server so delta is correct on resume
-        base_uptime = 0.0
-        try:
-            r = requests.get(f"{self.api_url}/node/status/{device_id}", timeout=5)
-            if r.ok:
-                nodes = r.json()
-                match = next((n for n in nodes if n.get("node_id") == node_id), None)
-                if match:
-                    base_uptime = match.get("uptime", 0.0)
-        except Exception:
-            pass
 
         while not stop_event.is_set():
             try:
-                uptime = base_uptime + (time.time() - start_time)
+                uptime = time.time() - start_time
                 response = requests.post(
                     f"{self.api_url}/node/heartbeat",
                     json={
