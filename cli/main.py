@@ -712,8 +712,8 @@ class NexoraCLI:
         BOLD   = "\033[1m"
 
         def color_status(s):
-            if s == "active":   return f"{GREEN}● active{RESET}"
-            if s == "stopped":  return f"{DIM}○ stopped{RESET}"
+            if s == "active":  return f"{GREEN}● active{RESET}"
+            if s == "stopped": return f"{DIM}○ stopped{RESET}"
             return f"{RED}✕ {s}{RESET}"
 
         def fmt_uptime(sec):
@@ -725,15 +725,13 @@ class NexoraCLI:
             if h: return f"{h}h {m}m {s}s"
             return f"{m}m {s}s"
 
-        def clear(): print("\033[2J\033[H", end="")
+        def clear():
+            os.system("cls" if platform.system() == "Windows" else "clear")
 
         username = self.config.get("username", "?")
-        logs = []
-        MAX_LOGS = 12
 
         while True:
             try:
-                # Fetch data
                 tokens_data, mining_data, nodes_data = None, None, []
                 try:
                     r = requests.get(f"{self.api_url}/tokens/{username}", timeout=5)
@@ -748,49 +746,49 @@ class NexoraCLI:
                     if r.ok: nodes_data = r.json()
                 except Exception: pass
 
-                node_running = PID_FILE.exists()
+                node_running  = PID_FILE.exists()
                 node_log_file = CONFIG_DIR / "node.log"
 
-                # Read last log lines
+                # Read last 8 log lines only
+                logs = []
                 if node_log_file.exists():
                     try:
                         lines = node_log_file.read_text(errors="ignore").splitlines()
-                        logs = lines[-MAX_LOGS:] if lines else []
+                        logs = [l for l in lines if l.strip()][-8:]
                     except Exception:
                         pass
 
-                W = shutil.get_terminal_size((80, 24)).columns
-                bar = "─" * W
+                W = min(shutil.get_terminal_size((80, 24)).columns, 100)
+                SEP = f"{DIM}{'─'*W}{RESET}"
 
-                clear()
+                clear()  # wipe entire terminal before redraw
 
                 # ── Header ──────────────────────────────────────────────────
-                title = f"  NEXORA NODE DASHBOARD  "
-                pad = (W - len(title)) // 2
+                title = "  NEXORA NODE DASHBOARD  "
+                pad = max((W - len(title)) // 2, 0)
                 print(f"{BOLD}{CYAN}{'═'*W}{RESET}")
-                print(f"{BOLD}{CYAN}{' '*pad}{title}{' '*pad}{RESET}")
+                print(f"{BOLD}{CYAN}{' '*pad}{title}{RESET}")
                 print(f"{BOLD}{CYAN}{'═'*W}{RESET}")
 
                 now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
-                node_status_str = f"{GREEN}RUNNING{RESET}" if node_running else f"{RED}STOPPED{RESET}"
+                node_str = f"{GREEN}● RUNNING{RESET}" if node_running else f"{RED}○ STOPPED{RESET}"
                 print(f"  {DIM}User:{RESET} {WHITE}{username}{RESET}   "
-                      f"{DIM}Node:{RESET} {node_status_str}   "
-                      f"{DIM}Time:{RESET} {DIM}{now}{RESET}")
-                print(f"{DIM}{bar}{RESET}")
+                      f"{DIM}Node:{RESET} {node_str}   "
+                      f"{DIM}{now}{RESET}\n")
 
-                # ── NEXORA Balance ───────────────────────────────────────────
-                print(f"\n  {BOLD}NEXORA BALANCE{RESET}")
+                # ── Balance ──────────────────────────────────────────────────
+                print(f"  {BOLD}NEXORA BALANCE{RESET}")
                 if tokens_data:
-                    avail  = tokens_data.get("tokens", 0)
-                    earned = tokens_data.get("total_earned", 0)
-                    claimed= tokens_data.get("claimed_tokens", 0)
-                    print(f"  {YELLOW}Available :{RESET} {WHITE}{avail:.6f} NEXORA{RESET}")
-                    print(f"  {DIM}Total Earned :{RESET} {earned:.6f} NEXORA")
-                    print(f"  {DIM}Claimed      :{RESET} {claimed:.6f} NEXORA")
+                    avail   = tokens_data.get("tokens", 0)
+                    earned  = tokens_data.get("total_earned", 0)
+                    claimed = tokens_data.get("claimed_tokens", 0)
+                    print(f"  {YELLOW}Available  :{RESET} {WHITE}{avail:.6f} NEXORA{RESET}")
+                    print(f"  {DIM}Total Earned:{RESET} {earned:.6f} NEXORA   "
+                          f"{DIM}Claimed:{RESET} {claimed:.6f} NEXORA")
                 else:
-                    print(f"  {DIM}Unable to fetch balance{RESET}")
+                    print(f"  {DIM}Unable to fetch — backend may be starting...{RESET}")
 
-                # ── Mining Rate ──────────────────────────────────────────────
+                # ── Mining ───────────────────────────────────────────────────
                 print(f"\n  {BOLD}MINING INFO{RESET}")
                 if mining_data:
                     rate   = mining_data.get("current_rate_per_min", 0)
@@ -798,55 +796,60 @@ class NexoraCLI:
                     decay  = mining_data.get("days_until_next_decay", 0)
                     remain = mining_data.get("remaining_supply", 0)
                     cap    = mining_data.get("mining_supply_cap", 200000)
-                    filled = int((cap - remain) / cap * 20)
-                    bar_fill = f"{GREEN}{'█'*filled}{DIM}{'░'*(20-filled)}{RESET}"
-                    print(f"  {DIM}Rate   :{RESET} {CYAN}{rate:.6f} NEXORA/min{RESET}  "
+                    pct    = (cap - remain) / cap
+                    filled = int(pct * 24)
+                    bar    = f"{GREEN}{'█'*filled}{DIM}{'░'*(24-filled)}{RESET}"
+                    print(f"  {DIM}Rate:{RESET} {CYAN}{rate:.6f} NEXORA/min{RESET}  "
                           f"{DIM}Epoch #{epoch}{RESET}  "
-                          f"{DIM}Next decay in {decay:.1f}d{RESET}")
-                    print(f"  {DIM}Supply :{RESET} [{bar_fill}] "
-                          f"{WHITE}{cap-remain:.0f}{RESET}{DIM}/{cap:.0f} distributed{RESET}")
+                          f"{YELLOW}Next decay in {decay:.1f}d{RESET}")
+                    print(f"  {DIM}Supply:[{RESET}{bar}{DIM}] "
+                          f"{cap-remain:.0f}/{cap:.0f} distributed{RESET}")
                 else:
                     print(f"  {DIM}Unable to fetch mining info{RESET}")
 
                 # ── Nodes ────────────────────────────────────────────────────
-                print(f"\n  {BOLD}NODES{RESET}")
+                print(f"\n  {BOLD}NODES ({len(nodes_data)}){RESET}")
                 if nodes_data:
                     for n in nodes_data:
-                        nid    = n.get("node_id","")[:16]
-                        status = n.get("status","?")
+                        nid    = n.get("node_id", "")[:16]
+                        status = n.get("status", "?")
                         score  = n.get("node_score", 0)
                         uptime = fmt_uptime(n.get("uptime", 0))
-                        score_color = GREEN if score >= 80 else YELLOW if score >= 50 else RED
+                        sc     = GREEN if score >= 80 else YELLOW if score >= 50 else RED
                         print(f"  {color_status(status)}  "
                               f"{DIM}{nid}...{RESET}  "
                               f"uptime {WHITE}{uptime}{RESET}  "
-                              f"score {score_color}{score}/100{RESET}")
+                              f"score {sc}{score}/100{RESET}")
                 else:
                     print(f"  {DIM}No nodes found{RESET}")
 
-                # ── Live Log ─────────────────────────────────────────────────
-                print(f"\n  {BOLD}LIVE LOG{RESET}  {DIM}(~/.nexora/node.log){RESET}")
-                print(f"{DIM}{bar}{RESET}")
-                if logs:
-                    for line in logs:
-                        if "NEXORA" in line:
-                            print(f"  {GREEN}{line}{RESET}")
-                        elif "Error" in line or "failed" in line.lower():
-                            print(f"  {RED}{line}{RESET}")
-                        else:
-                            print(f"  {DIM}{line}{RESET}")
-                else:
-                    print(f"  {DIM}No log entries yet...{RESET}")
+                # ── Live Log (last 8 lines, fixed height) ────────────────────
+                print(f"\n{SEP}")
+                print(f"  {BOLD}LIVE LOG{RESET}  {DIM}(last 8 lines){RESET}")
+                print(SEP)
+                for line in logs:
+                    if "NEXORA" in line and "+" in line:
+                        print(f"  {GREEN}{line}{RESET}")
+                    elif any(w in line.lower() for w in ["error", "failed", "suspend"]):
+                        print(f"  {RED}{line}{RESET}")
+                    elif "Heartbeat" in line:
+                        print(f"  {CYAN}{line}{RESET}")
+                    else:
+                        print(f"  {DIM}{line}{RESET}")
+                # Pad to always show 8 lines so layout doesn't jump
+                for _ in range(8 - len(logs)):
+                    print()
 
-                print(f"\n{DIM}{bar}{RESET}")
-                print(f"  {DIM}Refreshing every 5s — Press Ctrl+C to exit{RESET}")
+                print(SEP)
+                print(f"  {DIM}Auto-refresh every 5s  ·  Ctrl+C to exit{RESET}")
 
                 time.sleep(5)
 
             except KeyboardInterrupt:
-                print(f"\n\n{DIM}Dashboard closed.{RESET}\n")
+                clear()
+                print(f"\n  {DIM}Dashboard closed.{RESET}\n")
                 break
-            except Exception as e:
+            except Exception:
                 time.sleep(5)
 
     def claim(self):
