@@ -482,13 +482,23 @@ class NexoraCLI:
         """Background node loop - sends heartbeats with jitter to avoid perfect-timing detection."""
         import random
         start_time = time.time()
-        # Base interval 30 s ± up to 4 s of random jitter (always > 20 s server minimum)
         BASE_INTERVAL = 30
         JITTER = 4
+        # Fetch current uptime from server so delta is correct on resume
+        base_uptime = 0.0
+        try:
+            r = requests.get(f"{self.api_url}/node/status/{device_id}", timeout=5)
+            if r.ok:
+                nodes = r.json()
+                match = next((n for n in nodes if n.get("node_id") == node_id), None)
+                if match:
+                    base_uptime = match.get("uptime", 0.0)
+        except Exception:
+            pass
 
         while not stop_event.is_set():
             try:
-                uptime = time.time() - start_time
+                uptime = base_uptime + (time.time() - start_time)
                 response = requests.post(
                     f"{self.api_url}/node/heartbeat",
                     json={
@@ -503,7 +513,7 @@ class NexoraCLI:
                 if response.status_code == 200:
                     data = response.json()
                     earned = data.get('tokens_earned', 0)
-                    self._log(f"Heartbeat OK — +{earned:.6f} NEXORA (uptime: {uptime:.0f}s)")
+                    self._log(f"Heartbeat OK — +{earned:.8f} NEXORA (uptime: {uptime:.0f}s)")
                 else:
                     try:
                         error = response.json().get("detail", "Unknown error")
