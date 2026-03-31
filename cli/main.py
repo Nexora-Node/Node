@@ -303,11 +303,12 @@ class NexoraCLI:
                 pid = int(PID_FILE.read_text().strip())
                 alive = False
                 if platform.system() == "Windows":
-                    import ctypes
-                    handle = ctypes.windll.kernel32.OpenProcess(0x100000, False, pid)
-                    if handle:
-                        ctypes.windll.kernel32.CloseHandle(handle)
-                        alive = True
+                    # Check via tasklist — more reliable than OpenProcess
+                    result = subprocess.run(
+                        ["tasklist", "/FI", f"PID eq {pid}", "/NH"],
+                        capture_output=True, text=True
+                    )
+                    alive = str(pid) in result.stdout
                 else:
                     try:
                         os.kill(pid, 0)
@@ -344,6 +345,9 @@ class NexoraCLI:
                         start_new_session=True,
                         close_fds=True,
                     )
+            # Save daemon PID immediately so next 'start' detects it
+            CONFIG_DIR.mkdir(parents=True, exist_ok=True)
+            PID_FILE.write_text(str(proc.pid))
             print(f"✓ Node started in background (PID: {proc.pid})")
             print(f"  Logs : {log_file}")
             print(f"  Use 'python main.py status' to check status")
