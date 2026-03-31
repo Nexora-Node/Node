@@ -767,6 +767,7 @@ class NexoraCLI:
             try:
                 tokens_data = mining_data = None
                 nodes_data = []
+                user_data = None
                 try:
                     r = requests.get(f"{self.api_url}/tokens/{username}", timeout=4)
                     if r.ok: tokens_data = r.json()
@@ -778,6 +779,10 @@ class NexoraCLI:
                 try:
                     r = requests.get(f"{self.api_url}/node/user/{username}", timeout=4)
                     if r.ok: nodes_data = r.json()
+                except Exception: pass
+                try:
+                    r = requests.get(f"{self.api_url}/user/{username}", timeout=4)
+                    if r.ok: user_data = r.json()
                 except Exception: pass
 
                 logs = []
@@ -803,8 +808,11 @@ class NexoraCLI:
 
                 now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
                 ns  = f"{GREEN}[RUNNING]{RESET}" if node_running else f"{RED}[STOPPED]{RESET}"
+                ref = user_data.get("referral_code", self.config.get("referral_code", "N/A")) if user_data else self.config.get("referral_code", "N/A")
                 print(f"  {DIM}User:{RESET} {WHITE}{username}{RESET}   "
-                      f"{DIM}Node:{RESET} {ns}   {DIM}{now}{RESET}\n")
+                      f"{DIM}Node:{RESET} {ns}   {DIM}{now}{RESET}")
+                print(f"  {DIM}Referral:{RESET} {YELLOW}{ref}{RESET}  "
+                      f"{DIM}(share to invite others){RESET}\n")
 
                 # Balance
                 print(f"  {BOLD}NEXORA BALANCE{RESET}")
