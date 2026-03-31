@@ -698,6 +698,157 @@ class NexoraCLI:
         except Exception as e:
             print(f"✗ Error: {str(e)}")
 
+    def dashboard(self):
+        """Live terminal dashboard — refreshes every 5 seconds. Press Ctrl+C to exit."""
+        import shutil
+
+        CYAN   = "\033[96m"
+        GREEN  = "\033[92m"
+        YELLOW = "\033[93m"
+        RED    = "\033[91m"
+        WHITE  = "\033[97m"
+        DIM    = "\033[2m"
+        RESET  = "\033[0m"
+        BOLD   = "\033[1m"
+
+        def color_status(s):
+            if s == "active":   return f"{GREEN}● active{RESET}"
+            if s == "stopped":  return f"{DIM}○ stopped{RESET}"
+            return f"{RED}✕ {s}{RESET}"
+
+        def fmt_uptime(sec):
+            sec = int(sec)
+            d, r = divmod(sec, 86400)
+            h, r = divmod(r, 3600)
+            m, s = divmod(r, 60)
+            if d: return f"{d}d {h}h {m}m"
+            if h: return f"{h}h {m}m {s}s"
+            return f"{m}m {s}s"
+
+        def clear(): print("\033[2J\033[H", end="")
+
+        username = self.config.get("username", "?")
+        logs = []
+        MAX_LOGS = 12
+
+        while True:
+            try:
+                # Fetch data
+                tokens_data, mining_data, nodes_data = None, None, []
+                try:
+                    r = requests.get(f"{self.api_url}/tokens/{username}", timeout=5)
+                    if r.ok: tokens_data = r.json()
+                except Exception: pass
+                try:
+                    r = requests.get(f"{self.api_url}/mining/info", timeout=5)
+                    if r.ok: mining_data = r.json()
+                except Exception: pass
+                try:
+                    r = requests.get(f"{self.api_url}/node/user/{username}", timeout=5)
+                    if r.ok: nodes_data = r.json()
+                except Exception: pass
+
+                node_running = PID_FILE.exists()
+                node_log_file = CONFIG_DIR / "node.log"
+
+                # Read last log lines
+                if node_log_file.exists():
+                    try:
+                        lines = node_log_file.read_text(errors="ignore").splitlines()
+                        logs = lines[-MAX_LOGS:] if lines else []
+                    except Exception:
+                        pass
+
+                W = shutil.get_terminal_size((80, 24)).columns
+                bar = "─" * W
+
+                clear()
+
+                # ── Header ──────────────────────────────────────────────────
+                title = f"  NEXORA NODE DASHBOARD  "
+                pad = (W - len(title)) // 2
+                print(f"{BOLD}{CYAN}{'═'*W}{RESET}")
+                print(f"{BOLD}{CYAN}{' '*pad}{title}{' '*pad}{RESET}")
+                print(f"{BOLD}{CYAN}{'═'*W}{RESET}")
+
+                now = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
+                node_status_str = f"{GREEN}RUNNING{RESET}" if node_running else f"{RED}STOPPED{RESET}"
+                print(f"  {DIM}User:{RESET} {WHITE}{username}{RESET}   "
+                      f"{DIM}Node:{RESET} {node_status_str}   "
+                      f"{DIM}Time:{RESET} {DIM}{now}{RESET}")
+                print(f"{DIM}{bar}{RESET}")
+
+                # ── NEXORA Balance ───────────────────────────────────────────
+                print(f"\n  {BOLD}NEXORA BALANCE{RESET}")
+                if tokens_data:
+                    avail  = tokens_data.get("tokens", 0)
+                    earned = tokens_data.get("total_earned", 0)
+                    claimed= tokens_data.get("claimed_tokens", 0)
+                    print(f"  {YELLOW}Available :{RESET} {WHITE}{avail:.6f} NEXORA{RESET}")
+                    print(f"  {DIM}Total Earned :{RESET} {earned:.6f} NEXORA")
+                    print(f"  {DIM}Claimed      :{RESET} {claimed:.6f} NEXORA")
+                else:
+                    print(f"  {DIM}Unable to fetch balance{RESET}")
+
+                # ── Mining Rate ──────────────────────────────────────────────
+                print(f"\n  {BOLD}MINING INFO{RESET}")
+                if mining_data:
+                    rate   = mining_data.get("current_rate_per_min", 0)
+                    epoch  = mining_data.get("current_epoch", 0)
+                    decay  = mining_data.get("days_until_next_decay", 0)
+                    remain = mining_data.get("remaining_supply", 0)
+                    cap    = mining_data.get("mining_supply_cap", 200000)
+                    filled = int((cap - remain) / cap * 20)
+                    bar_fill = f"{GREEN}{'█'*filled}{DIM}{'░'*(20-filled)}{RESET}"
+                    print(f"  {DIM}Rate   :{RESET} {CYAN}{rate:.6f} NEXORA/min{RESET}  "
+                          f"{DIM}Epoch #{epoch}{RESET}  "
+                          f"{DIM}Next decay in {decay:.1f}d{RESET}")
+                    print(f"  {DIM}Supply :{RESET} [{bar_fill}] "
+                          f"{WHITE}{cap-remain:.0f}{RESET}{DIM}/{cap:.0f} distributed{RESET}")
+                else:
+                    print(f"  {DIM}Unable to fetch mining info{RESET}")
+
+                # ── Nodes ────────────────────────────────────────────────────
+                print(f"\n  {BOLD}NODES{RESET}")
+                if nodes_data:
+                    for n in nodes_data:
+                        nid    = n.get("node_id","")[:16]
+                        status = n.get("status","?")
+                        score  = n.get("node_score", 0)
+                        uptime = fmt_uptime(n.get("uptime", 0))
+                        score_color = GREEN if score >= 80 else YELLOW if score >= 50 else RED
+                        print(f"  {color_status(status)}  "
+                              f"{DIM}{nid}...{RESET}  "
+                              f"uptime {WHITE}{uptime}{RESET}  "
+                              f"score {score_color}{score}/100{RESET}")
+                else:
+                    print(f"  {DIM}No nodes found{RESET}")
+
+                # ── Live Log ─────────────────────────────────────────────────
+                print(f"\n  {BOLD}LIVE LOG{RESET}  {DIM}(~/.nexora/node.log){RESET}")
+                print(f"{DIM}{bar}{RESET}")
+                if logs:
+                    for line in logs:
+                        if "NEXORA" in line:
+                            print(f"  {GREEN}{line}{RESET}")
+                        elif "Error" in line or "failed" in line.lower():
+                            print(f"  {RED}{line}{RESET}")
+                        else:
+                            print(f"  {DIM}{line}{RESET}")
+                else:
+                    print(f"  {DIM}No log entries yet...{RESET}")
+
+                print(f"\n{DIM}{bar}{RESET}")
+                print(f"  {DIM}Refreshing every 5s — Press Ctrl+C to exit{RESET}")
+
+                time.sleep(5)
+
+            except KeyboardInterrupt:
+                print(f"\n\n{DIM}Dashboard closed.{RESET}\n")
+                break
+            except Exception as e:
+                time.sleep(5)
+
     def claim(self):
         """Claim available NEXORA"""
         print(f"\n{'='*50}")
@@ -824,6 +975,7 @@ Dashboard: https://node-delta-ten.vercel.app
 
     # Chains command
     subparsers.add_parser("chains", help="List supported blockchain networks")
+    subparsers.add_parser("dashboard", help="Live terminal dashboard (Ctrl+C to exit)")
 
     # Parse arguments
     args = parser.parse_args()
@@ -854,6 +1006,8 @@ Dashboard: https://node-delta-ten.vercel.app
                 print(f"  {c['name']:<20} chain_id={c['chain_id']:<10} {c['multiplier']}x reward")
         except Exception as e:
             print(f"Error: {e}")
+    elif args.command == "dashboard":
+        cli.dashboard()
     else:
         parser.print_help()
 
