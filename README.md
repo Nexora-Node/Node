@@ -36,7 +36,7 @@ Nexora is a distributed node network where participants run lightweight CLI node
 | Total Supply | 240,000 NEXOR (fixed, non-mintable) |
 | Mining Allocation | 200,000 NEXOR |
 | Reserve | 40,000 NEXOR (liquidity, dev, ecosystem) |
-| Token Contract | [`0xE0a4a9d3...11E24`](https://basescan.org/token/0xE0a4a9d3263ee93E167196954Ea4684418911E24) |
+| Token Contract | [`0xE0a4a9d3...11E24`](https://basescan.org/token/0xE0a4a9d3263ee93E167196954Ea4684418911E24) ✅ Verified |
 | Claim Contract | [`0xaeD12935...2cf0`](https://basescan.org/address/0xaeD12935DA40EFf65d919CCc4b77Df185f4A2cf0#code) ✅ Verified |
 
 ---
