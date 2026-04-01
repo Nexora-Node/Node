@@ -143,8 +143,6 @@ earned      = (uptime_delta / 60) × rate × (node_score / 100)
 4. Click **Claim NEXORA**
 5. Confirm the transaction on Base (~$0.01 gas)
 
-NEXORA transfers directly to your wallet. A **0.05% fee** goes to the DEX listing fund.
-
 ---
 
 ## Node Score & Anti-Cheat
