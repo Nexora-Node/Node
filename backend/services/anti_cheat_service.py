@@ -131,10 +131,12 @@ def is_suspicious(node: Node, uptime: float, heartbeat_interval: float) -> Dict[
         suspicious = True
         reasons.append("uptime_jump")
 
-    # B. Perfect timing — only meaningful after node has been running a while
-    if node.uptime > 300:  # 5 minutes of history
+    # B. Perfect timing — only flag if extremely consistent over long period
+    # CLI uses ±4s jitter so occasional near-30s intervals are normal
+    # Only flag if deviation is < 0.1s (essentially robotic precision)
+    if node.uptime > 1800:  # 30 minutes of history
         deviation = abs(heartbeat_interval - _PERFECT_TIMING_INTERVAL)
-        if deviation < _PERFECT_TIMING_TOLERANCE:
+        if deviation < 0.1:
             suspicious = True
             reasons.append("perfect_timing")
 
@@ -156,14 +158,14 @@ def is_suspicious(node: Node, uptime: float, heartbeat_interval: float) -> Dict[
 # ── NODE SCORE ────────────────────────────────────────────────────────────────
 
 _VIOLATION_PENALTIES: Dict[str, int] = {
-    "spam": -10,
-    "invalid_uptime": -15,
-    "suspicious": -20,
+    "spam": -5,
+    "invalid_uptime": -10,
+    "suspicious": -10,
     "ip_abuse": -25,
-    "uptime_jump": -15,
-    "perfect_timing": -10,
-    "time_regression": -20,
-    "abnormal_growth": -15,
+    "uptime_jump": -10,
+    "perfect_timing": -5,
+    "time_regression": -15,
+    "abnormal_growth": -10,
     "invalid_pow": -30,
 }
 
