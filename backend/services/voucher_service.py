@@ -53,12 +53,18 @@ def generate_claim_voucher(user_wallet: str, token_amount: float) -> dict:
     }
 
     types = {
+        "EIP712Domain": [
+            {"name": "name",              "type": "string"},
+            {"name": "version",           "type": "string"},
+            {"name": "chainId",           "type": "uint256"},
+            {"name": "verifyingContract", "type": "address"},
+        ],
         "Claim": [
             {"name": "user",     "type": "address"},
             {"name": "amount",   "type": "uint256"},
             {"name": "nonce",    "type": "uint256"},
             {"name": "deadline", "type": "uint256"},
-        ]
+        ],
     }
 
     message = {
@@ -75,7 +81,7 @@ def generate_claim_voucher(user_wallet: str, token_amount: float) -> dict:
         "message":     message,
     }
 
-    signed = Account.sign_typed_data(SIGNER_PRIVATE_KEY, structured_data)
+    signed = Account.sign_typed_data(SIGNER_PRIVATE_KEY, full_message=structured_data)
 
     return {
         "amount":   str(amount_wei),   # string to avoid JS BigInt issues
