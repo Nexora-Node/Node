@@ -7,8 +7,6 @@ import os
 import time
 import secrets
 from eth_account import Account
-from eth_account._utils.structured_data.hashing import hash_domain, hash_message
-from eth_account._utils.structured_data.validation import validate_structured_data
 
 
 SIGNER_PRIVATE_KEY        = os.environ.get("SIGNER_PRIVATE_KEY", "")
@@ -77,8 +75,8 @@ def generate_claim_voucher(user_wallet: str, token_amount: float) -> dict:
         "nonce":           str(nonce),
         "deadline":        deadline,
         "v":               signed.v,
-        "r":               "0x" + signed.r.hex(),
-        "s":               "0x" + signed.s.hex(),
+        "r":               "0x" + signed.r.to_bytes(32, "big").hex(),
+        "s":               "0x" + signed.s.to_bytes(32, "big").hex(),
         "contract":        CLAIM_DISTRIBUTOR_ADDRESS,
         "chain_id":        CHAIN_ID,
         "pending_amount":  token_amount,
