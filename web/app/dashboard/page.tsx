@@ -226,7 +226,6 @@ function DashboardContent() {
             {claimError && (
               <div className="text-xs text-red-400 mt-2">{claimError}</div>
             )}
-            <div className="text-xs text-gray-600 mt-1">0.05% fee on each claim → DEX listing fund</div>
           </div>
           <div className="text-right">
             {tokens && tokens.tokens >= 1 && (
