@@ -138,28 +138,39 @@ function DashboardContent() {
         <div className="bg-nexora-card border border-nexora-border rounded-2xl p-8 w-full max-w-md text-center">
           <img src="/logo.png" alt="Nexora" className="w-16 h-16 rounded-xl mx-auto mb-6 opacity-80" />
           <h2 className="text-xl font-bold text-white mb-2">Connect to Dashboard</h2>
-          <p className="text-gray-500 text-sm mb-6">Enter your Nexora username to view your nodes and NEXORA balance.</p>
-          <input
-            type="text"
-            placeholder="Your Nexora username"
-            id="username-input"
-            className="w-full bg-nexora-bg border border-nexora-border rounded-lg px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:border-nexora-accent mb-3 text-sm"
-            onKeyDown={e => {
-              if (e.key === "Enter") {
-                const val = (e.target as HTMLInputElement).value.trim();
-                if (val) router.push(`/dashboard?username=${encodeURIComponent(val)}`);
-              }
-            }}
-          />
-          <button
-            onClick={() => {
-              const val = (document.getElementById("username-input") as HTMLInputElement)?.value.trim();
-              if (val) router.push(`/dashboard?username=${encodeURIComponent(val)}`);
-            }}
-            className="w-full bg-nexora-accent hover:bg-indigo-500 text-white font-semibold py-3 rounded-lg transition text-sm"
-          >
-            View Dashboard →
-          </button>
+          <p className="text-gray-500 text-sm mb-6">
+            {address ? "Enter your Nexora username to view your nodes and balance." : "Connect your wallet first to access the dashboard."}
+          </p>
+
+          {!address ? (
+            <div className="flex justify-center">
+              <ConnectButton />
+            </div>
+          ) : (
+            <>
+              <input
+                type="text"
+                placeholder="Your Nexora username"
+                id="username-input"
+                className="w-full bg-nexora-bg border border-nexora-border rounded-lg px-4 py-3 text-white placeholder-gray-600 focus:outline-none focus:border-nexora-accent mb-3 text-sm"
+                onKeyDown={e => {
+                  if (e.key === "Enter") {
+                    const val = (e.target as HTMLInputElement).value.trim();
+                    if (val) router.push(`/dashboard?username=${encodeURIComponent(val)}`);
+                  }
+                }}
+              />
+              <button
+                onClick={() => {
+                  const val = (document.getElementById("username-input") as HTMLInputElement)?.value.trim();
+                  if (val) router.push(`/dashboard?username=${encodeURIComponent(val)}`);
+                }}
+                className="w-full bg-nexora-accent hover:bg-indigo-500 text-white font-semibold py-3 rounded-lg transition text-sm"
+              >
+                View Dashboard →
+              </button>
+            </>
+          )}
         </div>
       </div>
     </main>

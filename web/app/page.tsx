@@ -108,18 +108,36 @@ export default function Home() {
           <h2 className="text-lg font-bold text-white mb-4">Token</h2>
           <div className="grid md:grid-cols-2 gap-3 text-sm">
             {[
-              ["Name",     "NEXORA NODE"],
-              ["Symbol",   "NEXOR"],
-              ["Network",  "Base Mainnet"],
-              ["Supply",   "240,000 NEXOR (fixed)"],
-              ["Contract", "0xE0a4a9d3...11E24"],
-              ["Claim",    "0xaeD12935...2cf0 ✓ Verified"],
+              ["Name",    "NEXORA NODE",          null],
+              ["Symbol",  "NEXOR",                null],
+              ["Network", "Base Mainnet",          null],
+              ["Supply",  "240,000 NEXOR (fixed)", null],
             ].map(([k, v]) => (
-              <div key={k} className="flex justify-between border-b border-nexora-border pb-2">
+              <div key={k as string} className="flex justify-between border-b border-nexora-border pb-2">
                 <span className="text-gray-500">{k}</span>
                 <span className="text-white font-mono text-xs">{v}</span>
               </div>
             ))}
+            <div className="flex justify-between border-b border-nexora-border pb-2">
+              <span className="text-gray-500">Contract</span>
+              <a
+                href="https://basescan.org/token/0xE0a4a9d3263ee93E167196954Ea4684418911E24"
+                target="_blank" rel="noopener noreferrer"
+                className="text-nexora-accent hover:underline font-mono text-xs"
+              >
+                0xE0a4a9d3...11E24 ↗
+              </a>
+            </div>
+            <div className="flex justify-between border-b border-nexora-border pb-2">
+              <span className="text-gray-500">Claim</span>
+              <a
+                href="https://basescan.org/address/0xaeD12935DA40EFf65d919CCc4b77Df185f4A2cf0#code"
+                target="_blank" rel="noopener noreferrer"
+                className="text-nexora-green hover:underline font-mono text-xs"
+              >
+                0xaeD12935...2cf0 ✓ ↗
+              </a>
+            </div>
           </div>
         </div>
       </section>
