@@ -37,7 +37,7 @@ export default function Home() {
           by running a node
         </h1>
         <p className="text-gray-400 text-lg max-w-xl mx-auto mb-10 leading-relaxed">
-          Nexora is a distributed node network where participants earn <strong className="text-white">NEXORA (NEXOR)</strong> tokens
+          Nexora is a distributed node network where participants earn <strong className="text-white">NEXORA</strong> tokens
           by running lightweight nodes that help verify the Base blockchain.
           No GPU. No heavy computation. Just run and earn.
         </p>
@@ -60,9 +60,9 @@ export default function Home() {
         {/* Stats */}
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 w-full max-w-3xl mb-20">
           {[
-            { label: "Total Supply",      value: "240,000",   unit: "NEXOR"    },
-            { label: "Mining Allocation", value: "200,000",   unit: "NEXOR"    },
-            { label: "Starting Rate",     value: "0.2894",    unit: "NEXOR/min"},
+            { label: "Total Supply",      value: "240,000",   unit: "NEXORA"   },
+            { label: "Mining Allocation", value: "200,000",   unit: "NEXORA"    },
+            { label: "Starting Rate",     value: "0.2894",    unit: "NEXORA/min"},
             { label: "Decay Interval",    value: "24 days",   unit: "5% decay" },
           ].map(s => (
             <div key={s.label} className="bg-nexora-card border border-nexora-border rounded-xl p-5 text-center">
@@ -108,10 +108,10 @@ export default function Home() {
           <h2 className="text-lg font-bold text-white mb-4">Token</h2>
           <div className="grid md:grid-cols-2 gap-3 text-sm">
             {[
-              ["Name",    "NEXORA NODE",          null],
-              ["Symbol",  "NEXOR",                null],
-              ["Network", "Base Mainnet",          null],
-              ["Supply",  "240,000 NEXOR (fixed)", null],
+              ["Name",    "NEXORA NODE",           null],
+              ["Symbol",  "NEXORA",                null],
+              ["Network", "Base Mainnet",           null],
+              ["Supply",  "240,000 NEXORA (fixed)", null],
             ].map(([k, v]) => (
               <div key={k as string} className="flex justify-between border-b border-nexora-border pb-2">
                 <span className="text-gray-500">{k}</span>
