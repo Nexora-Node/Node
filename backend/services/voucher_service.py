@@ -81,7 +81,9 @@ def generate_claim_voucher(user_wallet: str, token_amount: float) -> dict:
         "message":     message,
     }
 
-    signed = Account.sign_typed_data(SIGNER_PRIVATE_KEY, full_message=structured_data)
+    # encode_typed_data then sign — works across eth-account versions
+    encoded = encode_typed_data(full_message=structured_data)
+    signed  = Account.sign_message(encoded, private_key=SIGNER_PRIVATE_KEY)
 
     return {
         "amount":   str(amount_wei),   # string to avoid JS BigInt issues
