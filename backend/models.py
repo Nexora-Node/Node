@@ -106,3 +106,14 @@ class MiningConfig(Base):
     base_rate_per_min = Column(Float, default=0.28935185)         # 10000 / 34560
     total_distributed = Column(Float, default=0.0)
     mining_supply_cap = Column(Float, default=200_000.0)
+
+
+class SystemReferral(Base):
+    """System-generated referral codes not tied to any user."""
+    __tablename__ = "system_referrals"
+
+    id = Column(Integer, primary_key=True, index=True)
+    code = Column(String(20), unique=True, index=True, nullable=False)
+    used = Column(Boolean, default=False)
+    used_by = Column(String(50), nullable=True)
+    created_at = Column(DateTime, default=datetime.utcnow)

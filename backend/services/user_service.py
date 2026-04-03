@@ -23,11 +23,35 @@ def register_user(db: Session, user_data: UserRegister) -> User:
     if db.query(User).filter(User.username == user_data.username).first():
         raise ValueError("Username already exists.")
 
+    # Check system referral first
+    from models import SystemReferral
+    system_ref = db.query(SystemReferral).filter(
+        SystemReferral.code == user_data.referral_code,
+        SystemReferral.used == False,
+    ).first()
+
+    if system_ref:
+        # System referral — no inviter, mark as used
+        new_user = User(
+            username=user_data.username,
+            referral_code=_unique_referral_code(db),
+            invited_by=None,
+            tokens=0.0,
+            total_earned=0.0,
+            claimed_tokens=0.0,
+        )
+        db.add(new_user)
+        system_ref.used = True
+        system_ref.used_by = user_data.username
+        db.commit()
+        db.refresh(new_user)
+        return new_user
+
+    # Regular user referral
     inviter = db.query(User).filter(User.referral_code == user_data.referral_code).first()
     if not inviter:
         raise ValueError("Invalid referral code.")
 
-    # Referral code hanya boleh dipakai sekali
     if inviter.referral_used:
         raise ValueError("Referral code has already been used.")
 
@@ -40,10 +64,7 @@ def register_user(db: Session, user_data: UserRegister) -> User:
         claimed_tokens=0.0,
     )
     db.add(new_user)
-
-    # Tandai referral code inviter sebagai sudah dipakai
     inviter.referral_used = True
-
     db.commit()
     db.refresh(new_user)
     return new_user
