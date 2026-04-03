@@ -36,7 +36,10 @@ export default function Home() {
           <Image src="/logo.png" alt="Nexora" width={36} height={36} className="rounded-lg" />
           <span className="text-xl font-bold text-white tracking-tight">Nexora</span>
         </div>
-        <ConnectButton />
+        <div className="flex items-center gap-4">
+          <a href="/explorer" className="text-gray-400 hover:text-nexora-accent text-sm transition">Explorer</a>
+          <ConnectButton />
+        </div>
       </nav>
 
       {/* Hero */}

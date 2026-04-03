@@ -118,6 +118,35 @@ export interface MiningInfo {
   supply_exhausted: boolean;
 }
 
+export interface ExplorerNode {
+  node_id: string;
+  username: string;
+  uptime: number;
+  last_seen: string;
+  node_score: number;
+  ip_address: string;
+  status: string;
+}
+
+export interface NetworkStats {
+  active_nodes: number;
+  total_users: number;
+  total_devices: number;
+  total_uptime_hours: number;
+}
+
+export async function getExplorerNodes(): Promise<ExplorerNode[]> {
+  const r = await fetch(`${API}/explorer/nodes`, { cache: "no-store" });
+  if (!r.ok) return [];
+  return r.json();
+}
+
+export async function getNetworkStats(): Promise<NetworkStats | null> {
+  const r = await fetch(`${API}/explorer/stats`, { cache: "no-store" });
+  if (!r.ok) return null;
+  return r.json();
+}
+
 export async function getMiningInfo(): Promise<MiningInfo | null> {
   const r = await fetch(`${API}/mining/info`, { cache: "no-store" });
   if (!r.ok) return null;

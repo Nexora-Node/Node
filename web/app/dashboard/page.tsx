@@ -138,6 +138,7 @@ function DashboardContent() {
           <span className="text-lg font-bold text-white">Nexora</span>
         </button>
         <div className="flex items-center gap-4">
+          <a href="/explorer" className="text-gray-400 hover:text-nexora-accent text-sm transition hidden md:block">Explorer</a>
           <span className="text-gray-400 text-sm hidden md:block">{username}</span>
           <ConnectButton />
         </div>
